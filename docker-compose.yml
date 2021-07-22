@@ -2,7 +2,7 @@ version: '3.4'
 
 services:
    para:
-     image: erudikaltd/para:latest_stable
+     image: docker push 787952688011.dkr.ecr.us-east-1.amazonaws.com/para:latest
      ports:
        - "8080:8080"
      volumes:
