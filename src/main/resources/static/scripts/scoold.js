@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,15 @@
  *
  * For issues and patches go to: https://github.com/erudika
  */
-/*global window: false, jQuery: false, $: false, google, hljs, RTL_ENABLED, CONTEXT_PATH, M, CONFIRM_MSG, WELCOME_MESSAGE, WELCOME_MESSAGE_ONLOGIN, MAX_TAGS_PER_POST: false */
+/*global window: false, jQuery: false, $: false, google, hljs, RTL_ENABLED, CONTEXT_PATH, M, CONFIRM_MSG, WELCOME_MESSAGE, WELCOME_MESSAGE_ONLOGIN, MAX_TAGS_PER_POST, MIN_PASS_LENGTH, AVATAR_UPLOADS_ENABLED, IMGUR_CLIENT_ID, IMGUR_ENABLED, CLOUDINARY_ENABLED: false */
 "use strict";
 $(function () {
 	var mapCanvas = $("div#map-canvas");
 	var locationbox = $("input.locationbox");
 	var rusuremsg = CONFIRM_MSG;
 	var hostURL = window.location.protocol + "//" + window.location.host;
+	var imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+		'image/svg+xml', 'image/webp', 'image/bmp', 'image/tiff'];
 
 	// Materialize CSS init
 
@@ -323,7 +325,7 @@ $(function () {
 		var newvotes = parseInt(votes.text(), 10) || 0;
 		if (!dis.data("disabled")) {
 			dis.data("disabled", true);
-			$.get(this.href, function(data) {
+			$.post(this.href, function(data) {
 				if (data === true) {
 					if (up) {
 						newvotes++;
@@ -425,6 +427,13 @@ $(function () {
 		}, rusuremsg, false);
 	});
 
+	submitFormBind("form.space-rename-form", function (data, status, xhr, form) {
+		var $form = $(form);
+		var space = $form.find("input[name=newspace]").val();
+		$form.closest(".card-panel").find(".editlink").click();
+		$form.closest(".card-panel").find(".space-name-box").text(space);
+	});
+
 	$(document).on("click", "a.toggle-webhook", function () {
 		var elem = $(this);
 		elem.toggleClass("hide").siblings("a.toggle-webhook").toggleClass("hide");
@@ -447,11 +456,6 @@ $(function () {
 		} else {
 			importForm.find(".import-text").next("strong").removeClass("hide").end().addClass("hide");
 		}
-	});
-
-	importForm.on("submit", function () {
-		$(this).find(".row:lt(2)").addClass("hide").end().find(".progress").removeClass("hide");
-		return true;
 	});
 
 	$("#select-theme-form").on("click", "input", function() {
@@ -491,6 +495,10 @@ $(function () {
 		}, rusuremsg, false);
 	});
 
+	$(".adminpage .tab").on("click", function () {
+		history.pushState("", document.title, window.location.pathname + window.location.search);
+	});
+
 	/****************************************************
      *                    REPORTS
      ****************************************************/
@@ -517,47 +525,41 @@ $(function () {
      *                    PROFILE
      ****************************************************/
 
-	var profilePic = $("img.profile-pic.on-profile-page");
-	var navbarPic = $("img.profile-pic:first");
-	var pictureUrlInput = $("#picture_url");
-	var pictureEditForm = pictureUrlInput.closest("form");
+	var profileAvatar = $("img.profile-pic.on-profile-page");
+	var navbarAvatar = $("img.profile-pic:first");
+	var avatarUrlInput = $("#picture-url");
+	var avatarEditForm = avatarUrlInput.closest("form");
+	var defaultAvatar = $("#avatar-default-url").val();
 
 	function changeAvatars(newPicValue) {
-		if (navbarPic.attr("src") === profilePic.attr("src")) {
-			navbarPic.attr("src", newPicValue);
-		}
-		profilePic.attr("src", newPicValue);
+		avatarUrlInput.val(newPicValue);
+		navbarAvatar.attr("src", newPicValue);
+		profileAvatar.attr("src", newPicValue);
+	}
+
+	function changeAvatarAndSubmit(newValue) {
+		setTimeout(function () {
+			changeAvatars(newValue);
+			$.post(avatarEditForm.attr("action"), {picture: newValue});
+		}, 200);
 	}
 
 	$("#use-gravatar-switch").change(function () {
-		var dis = $(this);
-		var newPic = pictureUrlInput.next("input[type=hidden]");
-		var newPicValue = newPic.val();
-		changeAvatars(newPicValue);
-		$.post(dis.closest("form").attr("action"), {picture: newPicValue});
-		// swap
-		newPic.val(pictureUrlInput.val());
-		pictureUrlInput.val(newPicValue);
-	});
-
-	pictureUrlInput.on('focusout paste', function () {
-		var dis = $(this);
-		setTimeout(function () {
-			changeAvatars(dis.val());
-			$.post(pictureEditForm.attr("action"), {picture: dis.val()});
-		}, 200);
+		var rthis = $(this);
+		if(rthis.prop('checked')) {
+			changeAvatarAndSubmit($("#avatar-gravatar-url").val());
+		} else {
+			changeAvatarAndSubmit($("#avatar-custom-url").val() || defaultAvatar);
+		}
 	});
 
 	$("#clear-avatar-btn").click(function () {
-		var defaultAvatar = window.location.origin + "/people/avatar";
-		changeAvatars(defaultAvatar);
-		pictureUrlInput.val(defaultAvatar);
-		$.post($(this).closest("form").attr("action"), {picture: defaultAvatar});
-		$("#use-gravatar-switch").removeAttr("checked");
+		changeAvatarAndSubmit(defaultAvatar);
+		avatarEditForm.find(".canceledit").click();
 		return false;
 	});
 
-	$("img.profile-pic, #edit-picture-link").on("mouseenter touchstart", function () {
+	$("img.profile-pic, #edit-picture-link").on("mouseenter", function () {
 		$("#edit-picture-link").show();
 	});
 	$("img.profile-pic").on("mouseleave", function () {
@@ -569,8 +571,105 @@ $(function () {
 		$.post(dis.attr("href"));
 		dis.find("span").toggleClass("hide");
 		$(".moderator-icon").toggleClass("hide");
+		$(".moderator-icon").parent("div").toggleClass("hide");
 		return false;
 	});
+
+	if (AVATAR_UPLOADS_ENABLED) {
+		var jsonFieldName = CLOUDINARY_ENABLED ? "secure_url" : "link";
+		var enableAvatarUploadLoading = function () {
+			$("#change-avatar-btn").attr("disabled", "disabled");
+			$("#avatar_loading").removeClass("hide");
+		};
+		var disableAvatarUploadLoading = function () {
+			$("#change-avatar-btn").removeAttr("disabled");
+			$("#avatar_loading").addClass("hide");
+		};
+
+		var beforeSendFile = function(file, next) { return next(file); };
+		var uploadOpts = {
+			remoteFilename: function (file) {
+				return (profileAvatar.attr("id") || "profile_" + Date.now()) + "_" + file.name;
+			},
+			onFileUploadResponse: function (xhr) {
+				var result = JSON.parse(xhr.responseText);
+				changeAvatarAndSubmit(result && result.data ? result.data[jsonFieldName] : result[jsonFieldName]);
+				disableAvatarUploadLoading();
+			},
+			onFileUploadError: function () {
+				disableAvatarUploadLoading();
+			},
+			allowedTypes: imageTypes
+		};
+		if (IMGUR_ENABLED) {
+			uploadOpts.uploadUrl = "https://api.imgur.com/3/image";
+			uploadOpts.uploadMethod = "POST";
+			uploadOpts.jsonFieldName = jsonFieldName;
+			uploadOpts.uploadFieldName = "image";
+			uploadOpts.extraHeaders = {
+				"Authorization": "Client-ID " + IMGUR_CLIENT_ID
+			};
+		} else if (CLOUDINARY_ENABLED) {
+			beforeSendFile = function (file, onSuccess, onError) {
+				$.ajax({
+					type: "POST",
+					async: false,
+					url: avatarEditForm.attr("action") + '/cloudinary-upload-link',
+					success: function (signedRequest) {
+						dropPicHandler.settings.uploadUrl = signedRequest.url;
+						dropPicHandler.settings.extraParams = signedRequest.data;
+						dropPicHandler.settings.jsonFieldName = jsonFieldName;
+						onSuccess(file);
+					},
+					error: onError
+				});
+			};
+		}
+
+		var dropPicHandler = new inlineAttachment(uploadOpts);
+
+		dropPicHandler.editor = {
+			insertValue: $.noop,
+			getValue: function () { return ""; },
+			setValue: $.noop
+		};
+
+		profileAvatar.on({
+			dragleave: function () {
+				$(this).removeClass('droptarget');
+			},
+			dragover: function (e) {
+				$(this).addClass('droptarget');
+				e.preventDefault();
+			},
+			drop: function (e) {
+				$(this).removeClass('droptarget');
+				e.preventDefault();
+				dropPicHandler.onDrop(e.originalEvent);
+			}
+		});
+
+		$("#change-avatar-btn").on('click', function () {
+			$(this).next("[type=file]").click();
+			return false;
+		});
+
+		$('input[type=file]').on('change', function (e) {
+			var file = e.target.files.length ? e.target.files[0] : null;
+			if (!file) return;
+
+			enableAvatarUploadLoading();
+
+			beforeSendFile(file, function(file) {
+				dropPicHandler.onFileInserted(file);
+				dropPicHandler.uploadFile(file);
+				avatarEditForm.find(".canceledit").click();
+			}, function(error) {
+				console.error(error);
+				disableAvatarUploadLoading();
+			});
+		});
+	}
 
 	/****************************************************
      *                      SETTINGS
@@ -727,13 +826,13 @@ $(function () {
 	});
 
 	function replaceMentionsWithMarkdownLinks(text) {
-		return text.replace(/@<(\d+)\|(.*?)>/igm, function (m, group1, group2) {
+		return text.replace(/@<(.+?)\|(.*?)>/igm, function (m, group1, group2) {
 			return "[" + (group2 || "NoName") + "](" + hostURL + "/profile/" + group1 + ")";
 		});
 	}
 
 	function replaceMentionsWithHtmlLinks(text) {
-		return text.replace(/@(&lt;|<)(\d+)\|(.*?)(&gt;|>)/igm, function (m, group1, group2, group3) {
+		return text.replace(/@(&lt;|<)(.+?)\|(.*?)(&gt;|>)/igm, function (m, group1, group2, group3) {
 			return "<a href=\"" + hostURL + "/profile/" + group2 + "\">" + (group3 || "NoName") + "</a>";
 		});
 	}
@@ -853,6 +952,16 @@ $(function () {
 		} catch (exception) {}
 	}
 
+	$(".show-answer-question-form").click(function () {
+		$(this).closest("div").next("div").removeClass("hide").end().hide();
+	});
+
+	if (window.location.pathname.match("/write$")) {
+		$("html, body").animate({
+			scrollTop: $("#answer-question-form").first().offset().top
+		});
+	}
+
 	var answerForm = $("form#answer-question-form");
 	if (answerForm.length) {
 		var answerBody = initPostEditor(answerForm.find("textarea[name=body]").get(0));
@@ -870,6 +979,7 @@ $(function () {
 				var allPosts = answerForm.closest(".row").find(".postbox");
 				if (allPosts.length > 1) {
 					allPosts.last().after(data);
+					updateMentionsWithLinks();
 				} else {
 					$(".answers-head").removeClass("hide").after(data);
 				}
@@ -1031,6 +1141,48 @@ $(function () {
 		});
 	});
 
+	$(".open-merge-window").click(function () {
+		$(this).closest(".editbox").addClass("hide");
+		$(".merge-window").removeClass("hide");
+		return false;
+	});
+
+	$(".close-merge-window").click(function () {
+		$(".open-merge-window").closest(".editbox").removeClass("hide");
+		$(".merge-window").addClass("hide");
+		return false;
+	});
+
+	var listOfQuestionsFound = {};
+	var listOfQuestionsFoundData = {};
+
+	$('.merge-window input.autocomplete').autocomplete({
+		data: {},
+		sortFunction: false,
+		limit: 10,
+		onAutocomplete: function (el) {
+			if (listOfQuestionsFound[el]) {
+				$(".merge-window").find("input[name=id2]").val(listOfQuestionsFound[el].id);
+			}
+		}
+	});
+
+	$('.merge-window input.autocomplete').keyup(function (e) {
+		// Don't capture enter or arrow key usage.
+		if (e.which === 13 || e.which === 38 || e.which === 40) {
+			return;
+		}
+		var instance = M.Autocomplete.getInstance(this);
+		$.get(CONTEXT_PATH + "/question/find/" + $(this).val(), function (data) {
+			for (var i = 0; i < data.length; i++) {
+				listOfQuestionsFoundData[data[i].title] = null;
+				listOfQuestionsFound[data[i].title] = data[i];
+			}
+			instance.updateData(listOfQuestionsFoundData);
+			instance.open();
+		});
+	});
+
 	/****************************************************
      *                   REVISIONS
      ****************************************************/
@@ -1188,4 +1340,59 @@ $(function () {
 			return true;
 		});
 	}
+
+	if (window.location.pathname.indexOf(CONTEXT_PATH + '/signin/') >= 0) {
+		var passwordInput = $('#passw, #newpassword');
+		var scoreMessage = $('#pass-meter-message');
+		var messagesList = ['Too simple', 'Weak', 'Good', 'Strong', 'Very strong'];
+		passwordInput.on('keyup', function () {
+			var score = 0;
+			var val = passwordInput.val();
+			if (val.length >= (MIN_PASS_LENGTH || 8)) {
+				++score;
+			}
+			if (val.match(/(?=.*[a-z])/)) {
+				++score;
+			}
+			if (val.match(/(?=.*[A-Z])/)) {
+				++score;
+			}
+			if (val.match(/(?=.*[0-9])/)) {
+				++score;
+			}
+			if (val.match(/(?=.*[^\w\s\n\t])/)) {
+				++score;
+			}
+			if (val.length === 0) {
+				score = -1;
+			}
+			switch (score) {
+				case 0:
+				case 1:
+					passwordInput.attr('class', 'pass-meter');
+					scoreMessage.text(messagesList[0]);
+					break;
+				case 2:
+					passwordInput.attr('class', 'pass-meter psms-25');
+					scoreMessage.text(messagesList[1]);
+					break;
+				case 3:
+					passwordInput.attr('class', 'pass-meter psms-50');
+					scoreMessage.text(messagesList[2]);
+					break;
+				case 4:
+					passwordInput.attr('class', 'pass-meter psms-75');
+					scoreMessage.text(messagesList[3]);
+					break;
+				case 5:
+					passwordInput.attr('class', 'pass-meter psms-100');
+					scoreMessage.text(messagesList[4]);
+					break;
+				default:
+					passwordInput.attr('class', '');
+					scoreMessage.text('');
+			}
+		});
+	}
+
 });

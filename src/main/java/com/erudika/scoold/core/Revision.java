@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 package com.erudika.scoold.core;
 
 import com.erudika.para.core.Sysprop;
-import com.erudika.para.annotations.Stored;
+import com.erudika.para.core.annotations.Stored;
 import com.erudika.para.client.ParaClient;
 import com.erudika.scoold.utils.ScooldUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;

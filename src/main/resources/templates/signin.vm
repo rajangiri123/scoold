@@ -20,14 +20,14 @@
 					#elseif($verified)
 						<h1><i class="fa fa-check-circle fa-2x green-text"></i></h1>
 						<p>$!lang.get('signin.verify.done')</p>
-						<a href="$signinlink" class="btn">$!lang.get("signin.title")</a>
+						<a href="$signinlink?email=$!verifiedEmail" class="btn">$!lang.get("signin.title")</a>
 					#else
 						#if($resend)
 							#set($action = "$signinlink/register/resend" )
 						#else
 							#set($action = "$signinlink/register" )
 						#end
-						<form method="post" action="$action">
+						<form method="post" action="$action" id="captcha-form">
 							#sectoken(false "REGISTER_USER")
 							#if(!$resend)
 							<div class="input-field mvm">
@@ -43,7 +43,9 @@
 							#if(!$resend)
 							<div class="input-field mvm">
 								<label for="passw">$!lang.get('password')</label>
-								<input id="passw" type="password" name="passw" value="" minlength="6" required>
+								<input id="passw" type="password" name="passw" value="" minlength="$MIN_PASS_LENGTH" required>
+								<div><small id="pass-meter-message" class="grey-text"></small></div>
+								#getmessagebox("red white-text" $error.get("passw"))
 							</div>
 							#end
 
@@ -57,8 +59,13 @@
 								<input type="text" name="leaveblank" value="">
 								<input type="hidden" name="timestamp" value="$utils.timestamp()">
 							</div>
-
-							<button type="submit" class="btn">#if($resend)$!lang.get('send')#else$!lang.get('signup.title')#end</button>
+							#if($captchakey.isBlank())
+								<button type="submit" class="btn">
+							#else
+								<button data-sitekey="$!captchakey" data-callback="onSubmit" data-action="submit" class="btn g-recaptcha">
+							#end
+									#if($resend)$!lang.get('send')#else$!lang.get('signup.title')#end
+								</button>
 						</form>
 					#end
 				</div>
@@ -84,7 +91,7 @@
 					<p>$!lang.get('done')</p>
 					<a href="$signinlink" class="btn">$!lang.get("signin.title")</a>
 					#else
-					<form method="post" action="$signinlink/iforgot">
+					<form method="post" action="$signinlink/iforgot" id="captcha-form">
 						#sectoken(false "FORGOTTEN_PASS")
 						<div class="mvm">
 							#getmessagebox("red white-text" $error.get("email"))
@@ -97,15 +104,19 @@
 						#if($token)
 							<div class="input-field mvm">
 								<label for="newpassword">$!lang.get('newpassword')</label>
-								<input id="newpassword" type="password" name="newpassword" value="" minlength="6" required>
+								<input id="newpassword" type="password" name="newpassword" value="" minlength="$MIN_PASS_LENGTH" required>
+								<div><small id="pass-meter-message" class="grey-text"></small></div>
+								#getmessagebox("red white-text" $error.get("newpassword"))
 							</div>
 						#end
-						#if($token)
-							<button type="submit" class="btn">$!lang.get('change')</button>
+						#if($nosmtp)#set($nosend = "disabled='disabled'")#else#set($nosend = "")#end
+						#if($captchakey.isBlank())
+							<button type="submit" class="btn" $nosend>
 						#else
-							#if($nosmtp)#set($nosend = "disabled='disabled'")#else#set($nosend = "")#end
-							<button type="submit" class="btn" $nosend>$!lang.get('send')</button>
+							<button data-sitekey="$!captchakey" data-callback="onSubmit" data-action="submit" class="btn g-recaptcha" $nosend>
 						#end
+							#if($token)$!lang.get('change')#else$!lang.get('send')#end
+							</button>
 					</form>
 					#end
 				</div>
@@ -115,9 +126,9 @@
 </div>
 #else
 <div class="page-wrapper">
-	<div class="row ptl">
+	<div class="row">
 		<div class="col s12 m12 l10 offset-l1 center">
-			<div class="card-panel lighten-4">
+			<div class="">
 				<h2 class="grey-text text-darken-2 pbl">$!lang.get("signin.title")</h2>
 
 				#if($ldapLoginEnabled || $passwordLoginEnabled)
@@ -138,7 +149,7 @@
 					<div class="${leftColSize}">
 						#if($passwordLoginEnabled)
 						#if($rightColSize != "hide")
-							<h4>$!lang.get('signin.password')</h4>
+							<h3>$!lang.get('signin.password')</h3>
 						#end
 						<div class="pal">
 							<form method="post" id="password-login-form">
@@ -167,7 +178,7 @@
 						#end
 
 						#if($ldapLoginEnabled)
-						<h4>$!ldapLoginProvider</h4>
+						<h3>$!ldapLoginProvider</h3>
 						<div class="pal">
 							<form method="post" id="ldap-login-form">
 								#sectoken(false "SIGNIN_LDAP")
@@ -193,16 +204,16 @@
 						<div class="row">
 							<div class="col s12 m12 l8 offset-l2 center">
 								#if($fbLoginEnabled)
-								<div class="mvl pvs">
-									<a id="fb-login-btn" href="#" class="btn-large indigo lighten-1 truncate">
-										<i class="fa fa-facebook-official left"></i> $!lang.get("signin.facebook")
-									</a>
-								</div>
+									<div class="mvl pvs">
+										<a id="fb-login-btn" href="$!scooldUtils.facebookLoginURL" class="btn-large indigo lighten-1 truncate">
+											<i class="fa fa-facebook-official left"></i> $!lang.get("signin.facebook")
+										</a>
+									</div>
 								#end
 
 								#if($gpLoginEnabled)
-								<div class="mvl pvs">
-										<a id="gp-login-btn" href="#" class="btn-large white grey-text text-darken-1 truncate pls prl">
+									<div class="mvl pvs">
+										<a id="gp-login-btn" href="$!scooldUtils.googleLoginURL" class="btn-large white grey-text text-darken-1 truncate pls prl">
 											<img src="$imageslink/google.svg" width="54" height="54" alt="Google logo" class="left"/>
 											$!lang.get("signin.google")
 										</a>

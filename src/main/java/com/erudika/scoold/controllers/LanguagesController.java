@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
  */
 package com.erudika.scoold.controllers;
 
-import static com.erudika.scoold.ScooldServer.LOCALE_COOKIE;
+import static com.erudika.scoold.ScooldServer.LANGUAGESLINK;
 import com.erudika.scoold.utils.HttpUtils;
 import com.erudika.scoold.utils.ScooldUtils;
 import java.util.Locale;
@@ -31,7 +31,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import static com.erudika.scoold.ScooldServer.LANGUAGESLINK;
 
 /**
  *
@@ -62,7 +61,7 @@ public class LanguagesController {
 		Locale locale = utils.getCurrentLocale(langkey);
 		if (locale != null) {
 			int maxAge = 60 * 60 * 24 * 365;  //1 year
-			HttpUtils.setRawCookie(LOCALE_COOKIE, locale.toString(), req, res, false, maxAge);
+			HttpUtils.setRawCookie(ScooldUtils.getConfig().localeCookie(), locale.toString(), req, res, false, "Strict", maxAge);
 		}
 		return "redirect:" + LANGUAGESLINK;
 	}

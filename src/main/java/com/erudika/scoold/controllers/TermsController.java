@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 package com.erudika.scoold.controllers;
 
 import com.erudika.para.core.Sysprop;
-import com.erudika.para.utils.Config;
+import com.erudika.para.core.utils.Para;
 import static com.erudika.scoold.ScooldServer.TERMSLINK;
 import com.erudika.scoold.utils.ScooldUtils;
 import javax.inject.Inject;
@@ -50,7 +50,7 @@ public class TermsController {
 	public String get(HttpServletRequest req, Model model) {
 		model.addAttribute("path", "terms.vm");
 		model.addAttribute("title", utils.getLang(req).get("terms.title"));
-		model.addAttribute("termshtml", utils.getParaClient().read("template" + Config.SEPARATOR + "terms"));
+		model.addAttribute("termshtml", utils.getParaClient().read("template" + Para.getConfig().separator() + "terms"));
 		return "base";
 	}
 
@@ -59,7 +59,7 @@ public class TermsController {
 		if (!utils.isAuthenticated(req) || !utils.isAdmin(utils.getAuthUser(req))) {
 			return "redirect:" + TERMSLINK;
 		}
-		Sysprop terms = new Sysprop("template" + Config.SEPARATOR + "terms");
+		Sysprop terms = new Sysprop("template" + Para.getConfig().separator() + "terms");
 		if (StringUtils.isBlank(termshtml)) {
 			utils.getParaClient().delete(terms);
 		} else {

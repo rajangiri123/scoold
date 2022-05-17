@@ -17,25 +17,25 @@
 		<link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
 		<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
 		<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,500" rel="stylesheet">
-		<meta name="description" content="Scoold is an open source Questions &amp; Answers platform written in Java.">
-		<meta name="keywords" content="scoold, knowledge sharing, collaboration, wiki, forum, Q&amp;A, questions and answers, stackoverflow clone">
+		<meta name="description" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
+		<meta name="keywords" content="scoold, knowledge sharing, collaboration, wiki, forum, Q&A, questions and answers, stackoverflow clone">
 		<!-- Google Plus -->
 		<meta name="google-site-verification" content="EXw8lqPcluhsyAkk657Dqu99QxTKvuyb-pVDDjNOtso">
 		<meta itemprop="name" content="Scoold" itemtype="https://schema.org/Article">
-		<meta itemprop="description" content="Scoold is an open source Q&A platform written in Java.">
+		<meta itemprop="description" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta itemprop="image" content="https://static.scoold.com/splash.png">
 		<!-- Twitter -->
-		<meta name="twitter:card" content="Scoold is an open source Q&A platform written in Java.">
+		<meta name="twitter:card" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta name="twitter:site" content="@getscoold">
 		<meta name="twitter:title" content="Scoold">
-		<meta name="twitter:description" content="Scoold is an open source Q&A platform written in Java.">
+		<meta name="twitter:description" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta name="twitter:creator" content="">
 		<meta name="twitter:image:src" content="https://static.scoold.com/splash.png">
 		<meta name="twitter:player" content="">
 		<!-- Open Graph General (Facebook & Pinterest) -->
 		<meta property="og:url" content="https://scoold.com">
 		<meta property="og:title" content="Scoold">
-		<meta property="og:description" content="Scoold is an open source Q&A platform written in Java.">
+		<meta property="og:description" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta property="og:site_name" content="Scoold Q&A">
 		<meta property="og:image" content="https://static.scoold.com/splash.png">
 		<meta property="fb:app_id" content="99517177417">
@@ -57,7 +57,9 @@
 				background-image: url("data:image/svg+xml,%3Csvg width='84' height='48' viewBox='0 0 84 48' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h12v6H0V0zm28 8h12v6H28V8zm14-8h12v6H42V0zm14 0h12v6H56V0zm0 8h12v6H56V8zM42 8h12v6H42V8zm0 16h12v6H42v-6zm14-8h12v6H56v-6zm14 0h12v6H70v-6zm0-16h12v6H70V0zM28 32h12v6H28v-6zM14 16h12v6H14v-6zM0 24h12v6H0v-6zm0 8h12v6H0v-6zm14 0h12v6H14v-6zm14 8h12v6H28v-6zm-14 0h12v6H14v-6zm28 0h12v6H42v-6zm14-8h12v6H56v-6zm0-8h12v6H56v-6zm14 8h12v6H70v-6zm0 8h12v6H70v-6zM14 24h12v6H14v-6zm14-8h12v6H28v-6zM14 8h12v6H14V8zM0 8h12v6H0V8z' fill='%230ea4f6' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E");
 				background-color: white;
 			}
-			#features, #contact {background-color: white;}
+			#features, #contact, #clients {background-color: white;}
+			#clients img {opacity: 0.5;}
+			#clients img:hover {opacity: 1;}
 			#splash {
 				margin: 15px 0px 40px 0px;
 				box-shadow: 0px 11px 28px -19px;
@@ -73,6 +75,9 @@
 				border: 1px solid #777;
 				font-weight: 300;
 				border-radius: 3px;
+			}
+			.container .m4 p {
+				text-align: justify;
 			}
 
 			.pan{padding:0}
@@ -206,7 +211,7 @@
 							</div>
 							<ul class="right hide-on-med-and-down">
 								<li><a href="https://cloud.scoold.com" title="Scoold Cloud" class="light-blue-text">Scoold Pro Hosting</a></li>
-								<!--<li><a href="https://github.com/Erudika/scoold/releases/download/1.43.3/scoold-1.43.3.jar" title="Download">Download</a></li>-->
+								<!--<li><a href="https://github.com/Erudika/scoold/releases/download/1.49.5/scoold-1.49.5.jar" title="Download">Download</a></li>-->
 								<li><a href="https://github.com/Erudika/scoold/blob/master/README.md" title="Documentation">Docs</a></li>
 								<li><a href="#faq" title="Frequently asked questions">FAQ</a></li>
 								<li class="dropit">
@@ -222,8 +227,8 @@
 							</ul>
 							<ul class="sidenav" id="mobile-drawer">
 								<li>&nbsp;</li>
-								<li><a href="https://github.com/Erudika/scoold/releases/download/1.43.3/scoold-1.43.3.jar" title="Download">Download</a></li>
-								<li><a href="https://paraio.com/scoold-pro" title="Buy Pro">Buy</a></li>
+								<li><a href="https://cloud.scoold.com" title="Scoold Cloud" class="light-blue-text">Scoold Pro Hosting</a></li>
+								<li><a href="https://paraio.com/scoold-pro" title="Buy Pro">Buy Pro</a></li>
 								<li><a href="#faq" title="Frequently asked questions">FAQ</a></li>
 								<li><a href="https://live.scoold.com" title="Demo">Scoold Demo</a></li>
 								<li><a href="https://pro.scoold.com" title="Demo">Scoold Pro Demo</a></li>
@@ -256,19 +261,19 @@
 							<div class="row mbl">
 								<div class="col s12 m6 l6">
 									<div class="mtl">
-										<a href="https://github.com/Erudika/scoold/releases/download/1.43.3/scoold-1.43.3.jar"
+										<a href="https://github.com/Erudika/scoold/releases/download/1.49.5/scoold-1.49.5.jar"
 											 class="btn-large light-blue"><b>Download Free</b></a>
 									</div>
 									<div>
 										<small>
-											<a href="https://github.com/Erudika/scoold/releases/tag/1.43.3" title="Release notes"><b>v1.43.3</b></a>, Requires Java 8+
+											<a href="https://github.com/Erudika/scoold/releases/tag/1.49.5" title="Release notes"><b>v1.49.5</b></a>, Requires Java 11+
 										</small>
 									</div>
 								</div>
 								<div class="col s12 m6 l6">
 									<div class="mtl">
 										<a href="https://paraio.com/scoold-pro"
-											 class="btn-large light-blue"><b>Buy PRO &euro;299</b></a>
+											 class="btn-large light-blue"><b>Buy PRO €499</b></a>
 									</div>
 									<div>
 										<small><b>per instance</b>, one-time fee</small>
@@ -289,10 +294,18 @@
 				</div>
 			</section>
 
+			<section id="clients">
+				<div class="container pvl center-align">
+					<h6 class="grey-text">Scoold is used by teams in these companies</h6>
+					<img src="companies.png" class="responsive-img">
+				</div>
+			</section>
+
+
 			<section id="features">
 				<div class="row container center-align ptl">
 					<h3>Features</h3>
-					<p>These are the standard features in the free version of Scoold. Everything here is included in Scoold Pro.</p>
+					<p>These are the standard features in the free version of Scoold. Everything here is included in Scoold Pro as well.</p>
 					<div class="switch">
 						<label>
 							<span class="mediumText"><b>List</b></span>
@@ -318,15 +331,25 @@
 								<th>Features</th>
 								<th>Scoold</th>
 								<th>Scoold Pro</th>
-								<th>Scoold Pro + Source</th>
+								<th>Scoold Pro + Source Code</th>
 							</tr>
 						</thead>
 						<tbody>
 							<tr>
 								<td>Price per instance (host)</td>
-								<td><b>Free</b></td>
-								<td>€299</td>
-								<td>contact us</td>
+								<td>
+									<h5>Free</h5>
+									<a href="https://github.com/Erudika/scoold/releases/download/1.49.5/scoold-1.49.5.jar"
+										 class="btn-small btn-flat light-blue white-text"><b>Download</b></a>
+								</td>
+								<td>
+									<h5>€499</h5>
+									<a href="https://paraio.com/scoold-pro" class="btn-small btn-flat light-blue white-text"><b>Buy &amp; Download</b></a>
+								</td>
+								<td>
+									<h5>€1999</h5>
+									<a href="https://paraio.com/scoold-pro?pid=2f8s4kt" class="btn-small btn-flat light-blue white-text"><b>Buy &amp; Download</b></a>
+								</td>
 							</tr>
 							<tr>
 								<td>License</td>
@@ -417,6 +440,12 @@
 								<td><i class="fa fa-check blue-text fa-2x"></i></td>
 							</tr>
 							<tr>
+								<td>Mutual authentication support (mTLS)</td>
+								<td><i class="fa fa-check blue-text fa-2x"></i></td>
+								<td><i class="fa fa-check blue-text fa-2x"></i></td>
+								<td><i class="fa fa-check blue-text fa-2x"></i></td>
+							</tr>
+							<tr>
 								<td>OAuth 2.0 authentication support</td>
 								<td><i class="fa fa-check blue-text fa-2x"></i></td>
 								<td><i class="fa fa-check blue-text fa-2x"></i></td>
@@ -430,6 +459,12 @@
 							</tr>
 							<tr>
 								<td>SAML authentication support</td>
+								<td><i class="fa fa-minus grey-text fa-2x"></i></td>
+								<td><i class="fa fa-check blue-text fa-2x"></i></td>
+								<td><i class="fa fa-check blue-text fa-2x"></i></td>
+							</tr>
+							<tr>
+								<td>SCIM 2.0 support</td>
 								<td><i class="fa fa-minus grey-text fa-2x"></i></td>
 								<td><i class="fa fa-check blue-text fa-2x"></i></td>
 								<td><i class="fa fa-check blue-text fa-2x"></i></td>
@@ -549,7 +584,7 @@
 								<td><i class="fa fa-check blue-text fa-2x"></i></td>
 							</tr>
 							<tr>
-								<td>Slack / Mattermost integration</td>
+								<td>Slack / Mattermost / Teams integration</td>
 								<td><i class="fa fa-minus grey-text fa-2x"></i></td>
 								<td><i class="fa fa-check blue-text fa-2x"></i></td>
 								<td><i class="fa fa-check blue-text fa-2x"></i></td>
@@ -582,7 +617,7 @@
 					</table>
 				</div>
 				<div id="features-grid">
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Full featured Q&A platform</h5>
 							<hr style="width: 50%">
@@ -603,7 +638,7 @@
 								a powerful search engine.	You can search for users, questions and answers from the search bar on top.</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Geolocation filtering of posts</h5>
 							<hr style="width: 50%">
@@ -624,7 +659,7 @@
 							It takes care of AJAX requests and toggles elements on the screen, nothing more.</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Similar posts suggestions</h5>
 							<hr style="width: 50%">
@@ -646,7 +681,7 @@
 							settings page.</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Modern and responsive layout</h5>
 							<hr style="width: 50%">
@@ -667,7 +702,7 @@
 							engines. Page URLs are pretty tidy, too. </p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>I18n with RTL support</h5>
 							<hr style="width: 50%">
@@ -687,7 +722,7 @@
 								tables, task lists and strikethrough. Oh, and you can use emojis too!</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Webhooks</h5>
 							<hr style="width: 50%">
@@ -707,7 +742,7 @@
 								executed through the API from any programming language.</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Themes &amp; dark mode</h5>
 							<hr style="width: 50%">
@@ -715,11 +750,10 @@
 								There's also a dark theme for those who work in a dimly lit room.</p>
 						</div>
 						<div class="col m4">
-							<h5><a href="https://zapier.com/developer/public-invite/96144/23ee4c1c6f03dc964b479b0d8ed027bb/">Zapier integration</a></h5>
+							<h5>Full SSL and mTLS support</h5>
 							<hr style="width: 50%">
-							<p>Zapier makes it easy to integrate Scoold with thousands of other applications. Thanks to the power of
-								REST hooks, you can have questions created automatically based on data from an external app or configure
-								Scoold to notify other apps when a new question is posted.</p>
+							<p>Secure all connections to Scoold with HTTPS by using your own SSL certificate without the need for a proxy. Tighten security with mutual authentication
+							between a proxy, Scoold and Para (mTLS).</p>
 						</div>
 						<div class="col m4">
 							<h5>Import from Stack Overflow</h5>
@@ -727,15 +761,25 @@
 							<p>Migrating from Stack Overflow for Teams to Scoold is effortless and seamless. Simply download your data from Stack Overflow and import it into Scoold.</p>
 						</div>
 					</div>
+					<div class="row container center-align">
+						<div class="col m4 offset-m4">
+							<h5><a href="https://zapier.com/developer/public-invite/96144/23ee4c1c6f03dc964b479b0d8ed027bb/">Zapier integration</a></h5>
+							<hr style="width: 50%">
+							<p>Zapier makes it easy to integrate Scoold with thousands of other applications. Thanks to the power of
+								REST hooks, you can have questions created automatically based on data from an external app or configure
+								Scoold to notify other apps when a new question is posted.</p>
+						</div>
+					</div>
 					<!--PRO Features-->
-					<div class="row container center-align pvs">
-						<h3>Pro Features</h3>
+					<div class="row container center-align">
+						<h3>Premium Features</h3>
 						<p>These features are only available in Scoold Pro.</p>
 						<div class="col m4">
-							<h5>Sticky / Favorite posts</h5>
+							<h5>Mentions</h5>
 							<hr style="width: 50%">
-							<p>Questions marked as "sticky" will always appear on top, before all the others. You can also mark your
-								favorite questions with <span class="red-text">&hearts;</span> and they'll be saved to your profile.</p>
+							<p>Mention anyone in your posts with <code>@Name</code>. Administrators can turn on an mention notifications
+								for all users or have each user decide if they want to opt-in. Mentions make discussions better by
+								allowing you to engage the right people.</p>
 						</div>
 						<div class="col m4">
 							<h5>SAML support</h5>
@@ -744,13 +788,13 @@
 								integrate Scoold into their existing infrastructure.</p>
 						</div>
 						<div class="col m4">
-							<h5>Anonymous posts</h5>
+							<h5>File uploads</h5>
 							<hr style="width: 50%">
-							<p>This can either be enabled or disabled. When enabled, anybody will be able to ask a question or submit
-								an answer. This lowers the barrier for new users and increases engagement.</p>
+							<p>Easily attach images and documents to posts. Files can either be uploaded to the local file system or
+								to Microsoft Azure Blob Storage, AWS S3 or Imgur.</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Unlimited spaces</h5>
 							<hr style="width: 50%">
@@ -770,18 +814,19 @@
 								users with emails only from those whitelisted domains.</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Advanced highlighting</h5>
 							<hr style="width: 50%">
 							<p>The syntax highlighting of code snippets is enhanced and supports additional languages
 								like LaTeX, Velocity, WebAssembly, JSX/TSX and PL/SQL. MathJax integration is also available. </p>
 						</div>
+
 						<div class="col m4">
-							<h5>File uploads</h5>
+							<h5>Anonymous posts</h5>
 							<hr style="width: 50%">
-							<p>People can upload images and documents and attach them to posts. Files can either be uploaded locally,
-								to Imgur or AWS S3.</p>
+							<p>This can either be enabled or disabled. When enabled, anybody will be able to ask a question or submit
+								an answer. This lowers the barrier for new users and increases engagement.</p>
 						</div>
 						<div class="col m4">
 							<h5>Security notifications</h5>
@@ -790,7 +835,7 @@
 								receive an email report each time the Content Security Policy (CSP) gets violated.</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Account suspension</h5>
 							<hr style="width: 50%">
@@ -798,11 +843,10 @@
 								permanently.</p>
 						</div>
 						<div class="col m4">
-							<h5><a href="slack.html">Slack</a> &amp; <a href="mattermost.html">Mattermost</a> integration</h5>
+							<h5>SCIM 2.0 support</h5>
 							<hr style="width: 50%">
-							<p>Create questions and answers from Slack or Mattermost, get real-time in-channel notification of new
-								posts and mentions,	approve posts and perform searches. Scoold can map your teams and chat channels to
-								spaces. Logging in with Slack/Mattermost is also supported.</p>
+							<p>Manage all Scoold users centrally with SCIM &mdash; quickly provision and deprovision accounts from your
+							identity platform of choice.</p>
 						</div>
 						<div class="col m4">
 							<h5>Wiki-style answers</h5>
@@ -811,7 +855,7 @@
 							allow everyone to contribute to the knowledge around a question, regardless of their reputation points.</p>
 						</div>
 					</div>
-					<div class="row container center-align pvs">
+					<div class="row container center-align">
 						<div class="col m4">
 							<h5>Email digest</h5>
 							<hr style="width: 50%">
@@ -820,11 +864,10 @@
 							engagement and stimulate users to come back to the site.</p>
 						</div>
 						<div class="col m4">
-							<h5>Mentions</h5>
+							<h5>Sticky / Favorite posts</h5>
 							<hr style="width: 50%">
-							<p>Mention anyone in your posts with <code>@Name</code>. Administrators can turn on an mention notifications
-								for all users or have each user decide if they want to opt-in. Mentions make discussions better by
-								allowing you to engage the right people.</p>
+							<p>Questions marked as "sticky" will always appear on top, before all the others. You can also mark your
+								favorite questions with <span class="red-text">&hearts;</span> and they'll be saved to your profile.</p>
 						</div>
 						<div class="col m4">
 							<h5>Custom authentication</h5>
@@ -833,12 +876,19 @@
 								external authentication provider can be made to work with Scoold in this way.</p>
 						</div>
 					</div>
+					<div class="row container center-align">
+						<div class="col m4 offset-m4">
+							<h5><a href="slack.html">Slack</a>, <a href="mattermost.html">Mattermost</a> &amp;
+								<a href="teams.html">Teams</a> integration</h5>
+							<hr style="width: 50%">
+							<p>Create questions and answers from Slack, Mattermost or Microsoft Teams, get real-time in-channel
+								notification of new posts and mentions,	approve posts and perform searches. Scoold can map your teams
+								and chat channels to spaces. Logging in with Slack/Mattermost/Teams is also supported.</p>
+						</div>
+					</div>
 				</div>
 
 				<div class="container pvl center-align">
-					<h6 class="grey-text">Scoold Pro is used by teams in these companies</h6>
-					<img src="companies.png" class="responsive-img">
-
 					<div class="mvl">
 						<a href="https://paraio.com/scoold-pro"
 							 class="btn-large light-blue"><b>Buy Scoold PRO</b></a>
@@ -859,7 +909,7 @@
 						</div>
 
 						<h3><span class="phl">Docker</span></h3>
-						<code>$ docker run erudikaltd/scoold:1.43.3</code>
+						<code>$ docker run erudikaltd/scoold:1.49.5</code>
 						<div class="mvl">
 							<a href="https://heroku.com/deploy?template=https://github.com/Erudika/scoold" title="Deploy to Heroku">
 								<img src="https://www.herokucdn.com/deploy/button.svg" alt="deploy to heroku button" style="max-width:100%;">
@@ -876,23 +926,27 @@
 							<a href="https://live.scoold.com" class="mhl">Scoold Demo</a>
 							<a href="https://pro.scoold.com" class="mhl">Scoold Pro Demo</a>
 						</h4>
-						<p>Demos take a minute to load as they are running on Heroku's free dynos.</p>
+						<p>Only the Scoold Pro demo has a publicly available access to the admin account.</p>
 						<h3><span class="phl">Integrations</span></h3>
 						<div class="row">
-							<div class="col m4 s12">
+							<div class="col l3 m6  s12">
 								<a href="slack.html">
-									<img src="https://cdn.brandfolder.io/5H442O3W/as/pl546j-7le8zk-ex8w65/Slack_RGB.svg" width="200" alt="Slack logo">
+									<img src="slack.svg" width="200" alt="Slack logo">
 								</a>
 							</div>
-							<div class="col m4 s12">
+							<div class="col l3 m6 s12">
+								<a href="teams.html">
+									<img src="microsoft-teams.svg" class="pvs mvs" width="250" alt="Microsoft Teams logo">
+								</a>
+							</div>
+							<div class="col l3 m6 s12">
 								<a href="mattermost.html">
-									<img src="https://upload.wikimedia.org/wikipedia/commons/8/84/Mattermost_logo_horizontal.svg"
-											 class="pvl mvs" width="250" alt="Mattermost logo">
+									<img src="mattermost.svg" class="pvl mvs" width="250" alt="Mattermost logo">
 								</a>
 							</div>
-							<div class="col m4 s12">
+							<div class="col l3 m6 s12">
 								<a href="https://zapier.com/developer/public-invite/96144/23ee4c1c6f03dc964b479b0d8ed027bb/">
-									<img src="https://upload.wikimedia.org/wikipedia/commons/f/fd/Zapier_logo.svg" class="pvl" width="120" alt="Zapier logo">
+									<img src="zapier.svg" class="pvm mvs" width="120" alt="Zapier logo">
 								</a>
 							</div>
 						</div>
@@ -968,6 +1022,7 @@
 							<h5 class="white-text">
 								Powered by <a href="https://paraio.com">
 									<img src="https://static.scoold.com/paradark.svg" width="100" style="margin-bottom: -6px;" alt="Para logo"></a>
+									<i>&mdash; the backend for busy developers!</i>
 							</h5>
 						</div>
 						<div class="col l4 offset-l2 s12 right-align">

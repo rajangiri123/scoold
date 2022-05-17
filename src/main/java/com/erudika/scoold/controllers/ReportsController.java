@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,13 @@
 package com.erudika.scoold.controllers;
 
 import com.erudika.para.client.ParaClient;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Pager;
 import com.erudika.para.core.utils.ParaObjectUtils;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.scoold.ScooldConfig;
+import static com.erudika.scoold.ScooldServer.REPORTSLINK;
+import static com.erudika.scoold.ScooldServer.SIGNINLINK;
 import com.erudika.scoold.core.Profile;
 import static com.erudika.scoold.core.Profile.Badge.REPORTER;
 import com.erudika.scoold.core.Report;
@@ -32,6 +35,7 @@ import java.util.Map;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,7 +43,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import static com.erudika.scoold.ScooldServer.REPORTSLINK;
 
 /**
  *
@@ -48,6 +51,8 @@ import static com.erudika.scoold.ScooldServer.REPORTSLINK;
 @Controller
 @RequestMapping("/reports")
 public class ReportsController {
+
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 
 	private final ScooldUtils utils;
 	private final ParaClient pc;
@@ -61,8 +66,10 @@ public class ReportsController {
 	@GetMapping
 	public String get(@RequestParam(required = false, defaultValue = Config._TIMESTAMP) String sortby,
 			HttpServletRequest req, Model model) {
-		if (!utils.isMod(utils.getAuthUser(req))) {
+		if (utils.isAuthenticated(req) && !utils.isMod(utils.getAuthUser(req))) {
 			return "redirect:" + REPORTSLINK;
+		} else if (!utils.isAuthenticated(req)) {
+			return "redirect:" + SIGNINLINK + "?returnto=" + REPORTSLINK;
 		}
 		Pager itemcount = utils.getPager("page", req);
 		itemcount.setSortby(sortby);
@@ -99,6 +106,9 @@ public class ReportsController {
 				//allow anonymous reports
 				rep.setAuthorName(utils.getLang(req).get("anonymous"));
 			}
+			if (StringUtils.startsWith(rep.getLink(), "/")) {
+				rep.setLink(CONF.serverUrl() + CONF.serverContextPath() + rep.getLink());
+			}
 			rep.create();
 			model.addAttribute("newreport", rep);
 			res.setStatus(200);
@@ -111,12 +121,12 @@ public class ReportsController {
 	@PostMapping("/cspv")
 	@SuppressWarnings("unchecked")
 	public void createCSPViolationReport(HttpServletRequest req, HttpServletResponse res) throws IOException {
-		if (Config.getConfigBoolean("csp_reports_enabled", false)) {
+		if (CONF.cspReportsEnabled()) {
 			Report rep = new Report();
 			rep.setDescription("CSP Violation Report");
 			rep.setSubType(Report.ReportType.OTHER);
 			rep.setLink("-");
-			rep.setAuthorName("Scoold");
+			rep.setAuthorName(CONF.appName());
 			Map<String, Object> body = ParaObjectUtils.getJsonReader(Map.class).readValue(req.getInputStream());
 			if (body != null && !body.isEmpty()) {
 				rep.setProperties((Map<String, Object>) (body.containsKey("csp-report") ? body.get("csp-report") : body));

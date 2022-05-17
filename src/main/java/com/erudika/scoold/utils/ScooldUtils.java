@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
  */
 package com.erudika.scoold.utils;
 
-import com.erudika.para.Para;
 import com.erudika.para.client.ParaClient;
 import com.erudika.para.core.Address;
 import com.erudika.para.core.ParaObject;
@@ -26,13 +25,14 @@ import com.erudika.para.core.Tag;
 import com.erudika.para.core.User;
 import com.erudika.para.core.Vote;
 import com.erudika.para.core.Webhook;
+import com.erudika.para.core.email.Emailer;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Para;
 import com.erudika.para.core.utils.ParaObjectUtils;
-import com.erudika.para.email.Emailer;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
-import com.erudika.para.validation.ValidationUtils;
-import com.erudika.scoold.ScooldServer;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.para.core.validation.ValidationUtils;
+import com.erudika.scoold.ScooldConfig;
 import static com.erudika.scoold.ScooldServer.*;
 import com.erudika.scoold.core.Comment;
 import com.erudika.scoold.core.Feedback;
@@ -49,6 +49,10 @@ import com.erudika.scoold.core.Revision;
 import com.erudika.scoold.core.UnapprovedQuestion;
 import com.erudika.scoold.core.UnapprovedReply;
 import static com.erudika.scoold.utils.HttpUtils.getCookieValue;
+import com.erudika.scoold.utils.avatars.AvatarFormat;
+import com.erudika.scoold.utils.avatars.AvatarRepository;
+import com.erudika.scoold.utils.avatars.AvatarRepositoryProxy;
+import com.erudika.scoold.utils.avatars.GravatarAvatarGenerator;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -58,7 +62,6 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import com.typesafe.config.ConfigObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.text.ParseException;
@@ -77,9 +80,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -89,11 +92,11 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.ConstraintViolation;
-import javax.ws.rs.WebApplicationException;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.lang3.RegExUtils;
-import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -111,7 +114,7 @@ public final class ScooldUtils {
 	private static final Map<String, String> FILE_CACHE = new ConcurrentHashMap<String, String>();
 	private static final Set<String> APPROVED_DOMAINS = new HashSet<>();
 	private static final Set<String> ADMINS = new HashSet<>();
-	private static final String EMAIL_ALERTS_PREFIX = "email-alerts" + Config.SEPARATOR;
+	private static final String EMAIL_ALERTS_PREFIX = "email-alerts" + Para.getConfig().separator();
 
 	private static final Profile API_USER;
 	private static final Set<String> CORE_TYPES;
@@ -121,11 +124,13 @@ public final class ScooldUtils {
 
 	private List<Sysprop> allSpaces;
 
+	private static final ScooldConfig CONF = new ScooldConfig();
+
 	static {
 		API_USER = new Profile("1", "System");
 		API_USER.setVotes(1);
 		API_USER.setCreatorid("1");
-		API_USER.setPicture(getGravatar(Config.SUPPORT_EMAIL));
+		API_USER.setTimestamp(Utils.timestamp());
 		API_USER.setGroups(User.Groups.ADMINS.toString());
 
 		CORE_TYPES = new HashSet<>(Arrays.asList(Utils.type(Comment.class),
@@ -172,15 +177,22 @@ public final class ScooldUtils {
 		WHITELISTED_MACROS.put("tags", "#tagspage($tagslist)");
 	}
 
-	private ParaClient pc;
-	private LanguageUtils langutils;
+	private final ParaClient pc;
+	private final LanguageUtils langutils;
+	private final AvatarRepository avatarRepository;
+	private final GravatarAvatarGenerator gravatarAvatarGenerator;
 	private static ScooldUtils instance;
+	private Sysprop customTheme;
 	@Inject private Emailer emailer;
 
 	@Inject
-	public ScooldUtils(ParaClient pc, LanguageUtils langutils) {
+	public ScooldUtils(ParaClient pc, LanguageUtils langutils, AvatarRepositoryProxy avatarRepository,
+			GravatarAvatarGenerator gravatarAvatarGenerator) {
 		this.pc = pc;
 		this.langutils = langutils;
+		this.avatarRepository = avatarRepository;
+		this.gravatarAvatarGenerator = gravatarAvatarGenerator;
+		API_USER.setPicture(avatarRepository.getAnonymizedLink(CONF.supportEmail()));
 	}
 
 	public ParaClient getParaClient() {
@@ -199,16 +211,20 @@ public final class ScooldUtils {
 		ScooldUtils.instance = instance;
 	}
 
+	public static ScooldConfig getConfig() {
+		return CONF;
+	}
+
 	static {
-		// multiple domains/admins are now allowed only in Scoold PRO
-		String approvedDomains = Config.getConfigParam("approved_domains_for_signups", "");
-		if (!StringUtils.isBlank(approvedDomains)) {
-			APPROVED_DOMAINS.add(approvedDomains);
+		// multiple domains/admins are allowed only in Scoold PRO
+		String approvedDomain = StringUtils.substringBefore(CONF.approvedDomainsForSignups(), ",");
+		if (!StringUtils.isBlank(approvedDomain)) {
+			APPROVED_DOMAINS.add(approvedDomain);
 		}
-		// multiple admins are now allowed only in Scoold PRO
-		String admins = Config.getConfigParam("admins", "");
-		if (!StringUtils.isBlank(admins)) {
-			ADMINS.add(admins);
+		// multiple admins are allowed only in Scoold PRO
+		String admin = StringUtils.substringBefore(CONF.admins(), ",");
+		if (!StringUtils.isBlank(admin)) {
+			ADMINS.add(admin);
 		}
 	}
 
@@ -224,22 +240,20 @@ public final class ScooldUtils {
 				logger.info("Connected to Para backend.");
 			}
 		} catch (Exception e) {
-			int maxRetries = Config.getConfigInt("connection_retries_max", 10);
-			int retryInterval = Config.getConfigInt("connection_retry_interval_sec", 10);
+			int maxRetries = CONF.paraConnectionRetryAttempts();
+			int retryInterval = CONF.paraConnectionRetryIntervalSec();
 			int count = ++retryCount;
 			logger.error("No connection to Para backend. Retrying connection in {}s (attempt {} of {})...",
 					retryInterval, count, maxRetries);
 			if (maxRetries < 0 || retryCount < maxRetries) {
-				Para.asyncExecute(new Runnable() {
-					public void run() {
-						try {
-							Thread.sleep(retryInterval * 1000L);
-						} catch (InterruptedException ex) {
-							logger.error(null, ex);
-							Thread.currentThread().interrupt();
-						}
-						retryConnection(callable, count);
+				Para.asyncExecute(() -> {
+					try {
+						Thread.sleep(retryInterval * 1000L);
+					} catch (InterruptedException ex) {
+						logger.error(null, ex);
+						Thread.currentThread().interrupt();
 					}
+					retryConnection(callable, count);
 				});
 			}
 		}
@@ -247,7 +261,7 @@ public final class ScooldUtils {
 
 	public ParaObject checkAuth(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
 		Profile authUser = null;
-		String jwt = HttpUtils.getStateParam(AUTH_COOKIE, req);
+		String jwt = HttpUtils.getStateParam(CONF.authCookie(), req);
 		if (isApiRequest(req)) {
 			return checkApiAuth(req);
 		} else if (jwt != null && !StringUtils.endsWithAny(req.getRequestURI(),
@@ -256,6 +270,7 @@ public final class ScooldUtils {
 			if (u != null && isEmailDomainApproved(u.getEmail())) {
 				authUser = getOrCreateProfile(u, req);
 				authUser.setUser(u);
+				authUser.setOriginalPicture(u.getPicture());
 				boolean updatedRank = promoteOrDemoteUser(authUser, u);
 				boolean updatedProfile = updateProfilePictureAndName(authUser, u);
 				if (updatedRank || updatedProfile) {
@@ -263,12 +278,8 @@ public final class ScooldUtils {
 				}
 			} else {
 				clearSession(req, res);
-				if (u != null) {
-					logger.warn("Attempted signin from an unknown domain: {}", u.getEmail());
-				} else {
-					logger.info("Invalid JWT found in cookie {}.", AUTH_COOKIE);
-				}
-				res.sendRedirect(getServerURL() + CONTEXT_PATH + SIGNINLINK + "?code=3&error=true");
+				logger.info("Invalid JWT found in cookie {}.", CONF.authCookie());
+				res.sendRedirect(CONF.serverUrl() + CONF.serverContextPath() + SIGNINLINK + "?code=3&error=true");
 				return null;
 			}
 		}
@@ -276,16 +287,16 @@ public final class ScooldUtils {
 	}
 
 	private ParaObject checkApiAuth(HttpServletRequest req) {
-		if (req.getRequestURI().equals(CONTEXT_PATH + "/api")) {
+		if (req.getRequestURI().equals(CONF.serverContextPath() + "/api")) {
 			return null;
 		}
 		String apiKeyJWT = StringUtils.removeStart(req.getHeader(HttpHeaders.AUTHORIZATION), "Bearer ");
-		if (req.getRequestURI().equals(CONTEXT_PATH + "/api/ping")) {
+		if (req.getRequestURI().equals(CONF.serverContextPath() + "/api/ping")) {
 			return API_USER;
-		} else if (req.getRequestURI().equals(CONTEXT_PATH + "/api/stats") && isValidJWToken(apiKeyJWT)) {
+		} else if (req.getRequestURI().equals(CONF.serverContextPath() + "/api/stats") && isValidJWToken(apiKeyJWT)) {
 			return API_USER;
 		} else if (!isApiEnabled() || StringUtils.isBlank(apiKeyJWT) || !isValidJWToken(apiKeyJWT)) {
-			throw new WebApplicationException(401);
+			throw new UnauthorizedException();
 		}
 		return API_USER;
 	}
@@ -328,14 +339,13 @@ public final class ScooldUtils {
 	private boolean updateProfilePictureAndName(Profile authUser, User u) {
 		boolean update = false;
 		if (!StringUtils.equals(u.getPicture(), authUser.getPicture())
-				&& !StringUtils.contains(authUser.getPicture(), "gravatar.com")
-				&& !Config.getConfigBoolean("avatar_edits_enabled", true)) {
+				&& !gravatarAvatarGenerator.isLink(authUser.getPicture())
+				&& !CONF.avatarEditsEnabled()) {
 			authUser.setPicture(u.getPicture());
 			update = true;
 		}
-		if (!Config.getConfigBoolean("name_edits_enabled", true) &&
-				!StringUtils.equals(u.getName(), authUser.getName())) {
-			authUser.setName(u.getName());
+		if (!CONF.nameEditsEnabled() &&	!StringUtils.equals(u.getName(), authUser.getName())) {
+			authUser.setName(StringUtils.abbreviate(u.getName(), 256));
 			update = true;
 		}
 		if (!StringUtils.equals(u.getName(), authUser.getOriginalName())) {
@@ -350,17 +360,20 @@ public final class ScooldUtils {
 				"1".equals(HttpUtils.getCookieValue(req, "dark-mode"));
 	}
 
+	private String getDefaultEmailSignature(String defaultText) {
+		String template = CONF.emailsDefaultSignatureText(defaultText);
+		return Utils.formatMessage(template, CONF.appName());
+	}
+
 	public void sendWelcomeEmail(User user, boolean verifyEmail, HttpServletRequest req) {
 		// send welcome email notification
 		if (user != null) {
 			Map<String, Object> model = new HashMap<String, Object>();
 			Map<String, String> lang = getLang(req);
-			String subject = Utils.formatMessage(lang.get("signin.welcome"), Config.APP_NAME);
-			String body1 = Utils.formatMessage(Config.getConfigParam("emails.welcome_text1",
-					lang.get("signin.welcome.body1") + "<br><br>"), Config.APP_NAME);
-			String body2 = Config.getConfigParam("emails.welcome_text2", lang.get("signin.welcome.body2") + "<br><br>");
-			String body3 = Utils.formatMessage(Config.getConfigParam("emails.welcome_text3", "Best, <br>The {0} team<br><br>"),
-					Config.APP_NAME);
+			String subject = Utils.formatMessage(lang.get("signin.welcome"), CONF.appName());
+			String body1 = Utils.formatMessage(CONF.emailsWelcomeText1(lang), CONF.appName());
+			String body2 = CONF.emailsWelcomeText2(lang);
+			String body3 = getDefaultEmailSignature(CONF.emailsWelcomeText3(lang));
 
 			if (verifyEmail && !user.getActive() && !StringUtils.isBlank(user.getIdentifier())) {
 				Sysprop s = pc.read(user.getIdentifier());
@@ -368,39 +381,39 @@ public final class ScooldUtils {
 					String token = Utils.base64encURL(Utils.generateSecurityToken().getBytes());
 					s.addProperty(Config._EMAIL_TOKEN, token);
 					pc.update(s);
-					token = getServerURL() + CONTEXT_PATH + SIGNINLINK + "/register?id=" + user.getId() + "&token=" + token;
+					token = CONF.serverUrl() + CONF.serverContextPath() + SIGNINLINK + "/register?id=" + user.getId() + "&token=" + token;
 					body3 = "<b><a href=\"" + token + "\">" + lang.get("signin.welcome.verify") + "</a></b><br><br>" + body3;
 				}
 			}
 
-			model.put("logourl", Config.getConfigParam("small_logo_url", "https://scoold.com/logo.png"));
-			model.put("heading", Utils.formatMessage(lang.get("signin.welcome.title"), user.getName()));
+			model.put("subject", escapeHtml(subject));
+			model.put("logourl", getSmallLogoUrl());
+			model.put("heading", Utils.formatMessage(lang.get("signin.welcome.title"), escapeHtml(user.getName())));
 			model.put("body", body1 + body2 + body3);
 			emailer.sendEmail(Arrays.asList(user.getEmail()), subject, compileEmailTemplate(model));
 		}
 	}
 
-	public void sendVerificationEmail(String email, HttpServletRequest req) {
-		if (!StringUtils.isBlank(email)) {
+	public void sendVerificationEmail(Sysprop identifier, HttpServletRequest req) {
+		if (identifier != null) {
 			Map<String, Object> model = new HashMap<String, Object>();
 			Map<String, String> lang = getLang(req);
-			String subject = Utils.formatMessage(lang.get("signin.welcome"), Config.APP_NAME);
-			String body = Utils.formatMessage(Config.getConfigParam("emails.welcome_text3", "Best, <br>The {0} team<br><br>"),
-					Config.APP_NAME);
+			String subject = Utils.formatMessage(lang.get("signin.welcome"), CONF.appName());
+			String body = getDefaultEmailSignature(CONF.emailsWelcomeText3(lang));
 
-			Sysprop s = pc.read(email);
-			if (s != null) {
-				String token = Utils.base64encURL(Utils.generateSecurityToken().getBytes());
-				s.addProperty(Config._EMAIL_TOKEN, token);
-				pc.update(s);
-				token = getServerURL() + CONTEXT_PATH + SIGNINLINK + "/register?id=" + s.getCreatorid() + "&token=" + token;
-				body = "<b><a href=\"" + token + "\">" + lang.get("signin.welcome.verify") + "</a></b><br><br>" + body;
-			}
+			String token = Utils.base64encURL(Utils.generateSecurityToken().getBytes());
+			identifier.addProperty(Config._EMAIL_TOKEN, token);
+			identifier.addProperty("confirmationTimestamp", Utils.timestamp());
+			pc.update(identifier);
+			token = CONF.serverUrl() + CONF.serverContextPath() + SIGNINLINK + "/register?id=" +
+					identifier.getCreatorid() + "&token=" + token;
+			body = "<b><a href=\"" + token + "\">" + lang.get("signin.welcome.verify") + "</a></b><br><br>" + body;
 
-			model.put("logourl", Config.getConfigParam("small_logo_url", "https://scoold.com/logo.png"));
+			model.put("subject", escapeHtml(subject));
+			model.put("logourl", getSmallLogoUrl());
 			model.put("heading", lang.get("hello"));
 			model.put("body", body);
-			emailer.sendEmail(Arrays.asList(email), subject, compileEmailTemplate(model));
+			emailer.sendEmail(Arrays.asList(identifier.getId()), subject, compileEmailTemplate(model));
 		}
 	}
 
@@ -408,13 +421,15 @@ public final class ScooldUtils {
 		if (email != null && token != null) {
 			Map<String, Object> model = new HashMap<String, Object>();
 			Map<String, String> lang = getLang(req);
-			String url = getServerURL() + CONTEXT_PATH + SIGNINLINK + "/iforgot?email=" + email + "&token=" + token;
+			String url = CONF.serverUrl() + CONF.serverContextPath() + SIGNINLINK + "/iforgot?email=" + email + "&token=" + token;
 			String subject = lang.get("iforgot.title");
-			String body1 = "Open the link below to change your password:<br><br>";
-			String body2 = Utils.formatMessage("<b><a href=\"{0}\">RESET PASSWORD</a></b><br><br>", url);
-			String body3 = "Best, <br>The " + Config.APP_NAME + " team<br><br>";
+			String body1 = lang.get("notification.iforgot.body1") + "<br><br>";
+			String body2 = Utils.formatMessage("<b><a href=\"{0}\">" + lang.get("notification.iforgot.body2") +
+					"</a></b><br><br>", url);
+			String body3 = getDefaultEmailSignature(lang.get("notification.signature") + "<br><br>");
 
-			model.put("logourl", Config.getConfigParam("small_logo_url", "https://scoold.com/logo.png"));
+			model.put("subject", escapeHtml(subject));
+			model.put("logourl", getSmallLogoUrl());
 			model.put("heading", lang.get("hello"));
 			model.put("body", body1 + body2 + body3);
 			emailer.sendEmail(Arrays.asList(email), subject, compileEmailTemplate(model));
@@ -471,13 +486,18 @@ public final class ScooldUtils {
 		if (StringUtils.isBlank(email)) {
 			return false;
 		}
-		if (!APPROVED_DOMAINS.isEmpty()) {
-			return APPROVED_DOMAINS.contains(StringUtils.substringAfter(email, "@"));
+		if (!APPROVED_DOMAINS.isEmpty() && !APPROVED_DOMAINS.contains(StringUtils.substringAfter(email, "@"))) {
+			logger.warn("Attempted signin from an unknown domain - email {} is part of an unapproved domain.", email);
+			return false;
 		}
 		return true;
 	}
 
 	public Object isSubscribedToNewPosts(HttpServletRequest req) {
+		if (!isNewPostNotificationAllowed()) {
+			return false;
+		}
+
 		Profile authUser = getAuthUser(req);
 		if (authUser != null) {
 			User u = authUser.getUser();
@@ -514,7 +534,7 @@ public final class ScooldUtils {
 
 	private void sendEmailsToSubscribersInSpace(Set<String> emails, String space, String subject, String html) {
 		int i = 0;
-		int max = Config.MAX_ITEMS_PER_PAGE;
+		int max = CONF.maxItemsPerPage();
 		List<String> terms = new ArrayList<>(max);
 		for (String email : emails) {
 			terms.add(email);
@@ -539,7 +559,7 @@ public final class ScooldUtils {
 		if (!tags.isEmpty()) {
 			Set<String> emails = new LinkedHashSet<>();
 			// find all user objects even if there are more than 10000 users in the system
-			Pager pager = new Pager(1, "_docid", false, Config.MAX_ITEMS_PER_PAGE);
+			Pager pager = new Pager(1, "_docid", false, CONF.maxItemsPerPage());
 			List<Profile> profiles;
 			do {
 				profiles = pc.findQuery(Utils.type(Profile.class),
@@ -559,56 +579,70 @@ public final class ScooldUtils {
 	}
 
 	@SuppressWarnings("unchecked")
-	public void sendUpdatedFavTagsNotifications(Post question, List<String> addedTags) {
+	public void sendUpdatedFavTagsNotifications(Post question, List<String> addedTags, HttpServletRequest req) {
+		if (!isFavTagsNotificationAllowed()) {
+			return;
+		}
 		// sends a notification to subscibers of a tag if that tag was added to an existing question
 		if (question != null && !question.isReply() && addedTags != null && !addedTags.isEmpty()) {
 			Profile postAuthor = question.getAuthor(); // the current user - same as utils.getAuthUser(req)
 			Map<String, Object> model = new HashMap<String, Object>();
+			Map<String, String> lang = getLang(req);
 			String name = postAuthor.getName();
 			String body = Utils.markdownToHtml(question.getBody());
-			String picture = Utils.formatMessage("<img src='{0}' width='25'>", postAuthor.getPicture());
-			String postURL = getServerURL() + question.getPostLink(false, false);
+			String picture = Utils.formatMessage("<img src='{0}' width='25'>", escapeHtmlAttribute(avatarRepository.
+					getLink(postAuthor, AvatarFormat.Square25)));
+			String postURL = CONF.serverUrl() + question.getPostLink(false, false);
 			String tagsString = Optional.ofNullable(question.getTags()).orElse(Collections.emptyList()).stream().
-					map(t -> "<span class=\"tag\">" + (addedTags.contains(t) ? "<b>" + t + "<b>" : t) + "</span>").
+					map(t -> "<span class=\"tag\">" +
+							(addedTags.contains(t) ? "<b>" + escapeHtml(t) + "<b>" : escapeHtml(t)) + "</span>").
 					collect(Collectors.joining("&nbsp;"));
-			model.put("logourl", Config.getConfigParam("small_logo_url", "https://scoold.com/logo.png"));
-			model.put("heading", Utils.formatMessage("{0} {1} edited:", picture, name));
+			String subject = Utils.formatMessage(lang.get("notification.favtags.subject"), name,
+					Utils.abbreviate(question.getTitle(), 255));
+			model.put("subject", escapeHtml(subject));
+			model.put("logourl", getSmallLogoUrl());
+			model.put("heading", Utils.formatMessage(lang.get("notification.favtags.heading"), picture, escapeHtml(name)));
 			model.put("body", Utils.formatMessage("<h2><a href='{0}'>{1}</a></h2><div>{2}</div><br>{3}",
-					postURL, question.getTitle(), body, tagsString));
+					postURL, escapeHtml(question.getTitle()), body, tagsString));
 
 			Set<String> emails = getFavTagsSubscribers(addedTags);
-			sendEmailsToSubscribersInSpace(emails, question.getSpace(),
-					name + " edited question '" + Utils.abbreviate(question.getTitle(), 255) + "'",
-					compileEmailTemplate(model));
+			sendEmailsToSubscribersInSpace(emails, question.getSpace(), subject, compileEmailTemplate(model));
 		}
 	}
 
 	@SuppressWarnings("unchecked")
-	public void sendNewPostNotifications(Post question) {
+	public void sendNewPostNotifications(Post question, HttpServletRequest req) {
 		if (question == null) {
 			return;
 		}
 		// the current user - same as utils.getAuthUser(req)
 		Profile postAuthor = question.getAuthor() != null ? question.getAuthor() : pc.read(question.getCreatorid());
 		if (!question.getType().equals(Utils.type(UnapprovedQuestion.class))) {
+			if (!isNewPostNotificationAllowed()) {
+				return;
+			}
+
 			Map<String, Object> model = new HashMap<String, Object>();
+			Map<String, String> lang = getLang(req);
 			String name = postAuthor.getName();
 			String body = Utils.markdownToHtml(question.getBody());
-			String picture = Utils.formatMessage("<img src='{0}' width='25'>", postAuthor.getPicture());
-			String postURL = getServerURL() + question.getPostLink(false, false);
+			String picture = Utils.formatMessage("<img src='{0}' width='25'>", escapeHtmlAttribute(avatarRepository.
+					getLink(postAuthor, AvatarFormat.Square25)));
+			String postURL = CONF.serverUrl() + question.getPostLink(false, false);
 			String tagsString = Optional.ofNullable(question.getTags()).orElse(Collections.emptyList()).stream().
-					map(t -> "<span class=\"tag\">" + t + "</span>").
+					map(t -> "<span class=\"tag\">" + escapeHtml(t) + "</span>").
 					collect(Collectors.joining("&nbsp;"));
-			model.put("logourl", Config.getConfigParam("small_logo_url", "https://scoold.com/logo.png"));
-			model.put("heading", Utils.formatMessage("{0} {1} posted:", picture, name));
+			String subject = Utils.formatMessage(lang.get("notification.newposts.subject"), name,
+					Utils.abbreviate(question.getTitle(), 255));
+			model.put("subject", escapeHtml(subject));
+			model.put("logourl", getSmallLogoUrl());
+			model.put("heading", Utils.formatMessage(lang.get("notification.newposts.heading"), picture, escapeHtml(name)));
 			model.put("body", Utils.formatMessage("<h2><a href='{0}'>{1}</a></h2><div>{2}</div><br>{3}",
-					postURL, question.getTitle(), body, tagsString));
+					postURL, escapeHtml(question.getTitle()), body, tagsString));
 
 			Set<String> emails = new HashSet<String>(getNotificationSubscribers(EMAIL_ALERTS_PREFIX + "new_post_subscribers"));
 			emails.addAll(getFavTagsSubscribers(question.getTags()));
-			sendEmailsToSubscribersInSpace(emails, question.getSpace(),
-					name + " posted the question '" + Utils.abbreviate(question.getTitle(), 255) + "'",
-					compileEmailTemplate(model));
+			sendEmailsToSubscribersInSpace(emails, question.getSpace(), subject, compileEmailTemplate(model));
 		} else if (postsNeedApproval() && question instanceof UnapprovedQuestion) {
 			Report rep = new Report();
 			rep.setDescription("New question awaiting approval");
@@ -619,18 +653,24 @@ public final class ScooldUtils {
 		}
 	}
 
-	public void sendReplyNotifications(Post parentPost, Post reply) {
+	public void sendReplyNotifications(Post parentPost, Post reply, HttpServletRequest req) {
 		// send email notification to author of post except when the reply is by the same person
 		if (parentPost != null && reply != null && !StringUtils.equals(parentPost.getCreatorid(), reply.getCreatorid())) {
 			Profile replyAuthor = reply.getAuthor(); // the current user - same as utils.getAuthUser(req)
 			Map<String, Object> model = new HashMap<String, Object>();
+			Map<String, String> lang = getLang(req);
 			String name = replyAuthor.getName();
 			String body = Utils.markdownToHtml(reply.getBody());
-			String picture = Utils.formatMessage("<img src='{0}' width='25'>", replyAuthor.getPicture());
-			String postURL = getServerURL() + parentPost.getPostLink(false, false);
-			model.put("logourl", Config.getConfigParam("small_logo_url", "https://scoold.com/logo.png"));
-			model.put("heading", Utils.formatMessage("New reply to <a href='{0}'>{1}</a>", postURL, parentPost.getTitle()));
-			model.put("body", Utils.formatMessage("<h2>{0} {1}:</h2><div>{2}</div>", picture, name, body));
+			String picture = Utils.formatMessage("<img src='{0}' width='25'>", escapeHtmlAttribute(avatarRepository.
+					getLink(replyAuthor, AvatarFormat.Square25)));
+			String postURL = CONF.serverUrl() + parentPost.getPostLink(false, false);
+			String subject = Utils.formatMessage(lang.get("notification.reply.subject"), name,
+					Utils.abbreviate(reply.getTitle(), 255));
+			model.put("subject", escapeHtml(subject));
+			model.put("logourl", getSmallLogoUrl());
+			model.put("heading", Utils.formatMessage(lang.get("notification.reply.heading"),
+					Utils.formatMessage("<a href='{0}'>{1}</a>", postURL, escapeHtml(parentPost.getTitle()))));
+			model.put("body", Utils.formatMessage("<h2>{0} {1}:</h2><div>{2}</div>", picture, escapeHtml(name), body));
 
 			Profile authorProfile = pc.read(parentPost.getCreatorid());
 			if (authorProfile != null) {
@@ -651,17 +691,69 @@ public final class ScooldUtils {
 				rep.create();
 			}
 
-			if (parentPost.hasFollowers()) {
+			if (isReplyNotificationAllowed() && parentPost.hasFollowers()) {
 				emailer.sendEmail(new ArrayList<String>(parentPost.getFollowers().values()),
-						name + " replied to '" + Utils.abbreviate(reply.getTitle(), 255) + "'",
+						subject,
 						compileEmailTemplate(model));
 			}
 		}
 	}
 
+	public void sendCommentNotifications(Post parentPost, Comment comment, Profile commentAuthor, HttpServletRequest req) {
+		// send email notification to author of post except when the comment is by the same person
+		if (parentPost != null && comment != null) {
+			parentPost.setAuthor(pc.read(Profile.id(parentPost.getCreatorid()))); // parent author is not current user (authUser)
+			Map<String, Object> payload = new LinkedHashMap<>(ParaObjectUtils.getAnnotatedFields(comment, false));
+			payload.put("parent", parentPost);
+			payload.put("author", commentAuthor);
+			triggerHookEvent("comment.create", payload);
+			// get the last 5-6 commentators who want to be notified - https://github.com/Erudika/scoold/issues/201
+			Pager p = new Pager(1, Config._TIMESTAMP, false, 5);
+			boolean isCommentatorThePostAuthor = StringUtils.equals(parentPost.getCreatorid(), comment.getCreatorid());
+			Set<String> last5ids = pc.findChildren(parentPost, Utils.type(Comment.class),
+					"!(" + Config._CREATORID + ":\"" + comment.getCreatorid() + "\")", p).
+					stream().map(c -> c.getCreatorid()).distinct().collect(Collectors.toSet());
+			if (!isCommentatorThePostAuthor && !last5ids.contains(parentPost.getCreatorid())) {
+				last5ids = new HashSet<>(last5ids);
+				last5ids.add(parentPost.getCreatorid());
+			}
+			Map<String, String> lang = getLang(req);
+			List<Profile> last5commentators = pc.readAll(new ArrayList<>(last5ids));
+			last5commentators = last5commentators.stream().filter(u -> u.getCommentEmailsEnabled()).collect(Collectors.toList());
+			pc.readAll(last5commentators.stream().map(u -> u.getCreatorid()).collect(Collectors.toList())).forEach(author -> {
+				if (isCommentNotificationAllowed()) {
+					Map<String, Object> model = new HashMap<String, Object>();
+					String name = commentAuthor.getName();
+					String body = Utils.markdownToHtml(comment.getComment());
+					String pic = Utils.formatMessage("<img src='{0}' width='25'>",
+						escapeHtmlAttribute(avatarRepository.getLink(commentAuthor, AvatarFormat.Square25)));
+					String postURL = CONF.serverUrl() + parentPost.getPostLink(false, false);
+					String subject = Utils.formatMessage(lang.get("notification.comment.subject"), name, parentPost.getTitle());
+					model.put("subject", escapeHtml(subject));
+					model.put("logourl", getSmallLogoUrl());
+					model.put("heading", Utils.formatMessage(lang.get("notification.comment.heading"),
+							Utils.formatMessage("<a href='{0}'>{1}</a>", postURL, escapeHtml(parentPost.getTitle()))));
+					model.put("body", Utils.formatMessage("<h2>{0} {1}:</h2><div class='panel'>{2}</div>", pic, escapeHtml(name), body));
+					emailer.sendEmail(Arrays.asList(((User) author).getEmail()), subject, compileEmailTemplate(model));
+				}
+			});
+		}
+	}
+
+	private String escapeHtmlAttribute(String value) {
+		return StringUtils.trimToEmpty(value)
+				.replaceAll("'", "%27")
+				.replaceAll("\"", "%22")
+				.replaceAll("\\\\", "");
+	}
+
+	private String escapeHtml(String value) {
+		return StringEscapeUtils.escapeHtml4(value);
+	}
+
 	public Profile readAuthUser(HttpServletRequest req) {
 		Profile authUser = null;
-		User u = pc.me(HttpUtils.getStateParam(AUTH_COOKIE, req));
+		User u = pc.me(HttpUtils.getStateParam(CONF.authCookie(), req));
 		if (u != null && isEmailDomainApproved(u.getEmail())) {
 			return getOrCreateProfile(u, req);
 		}
@@ -676,40 +768,88 @@ public final class ScooldUtils {
 		return getAuthUser(req) != null;
 	}
 
-	public boolean isNearMeFeatureEnabled() {
-		return Config.getConfigBoolean("nearme_feature_enabled", !Config.getConfigParam("gmaps_api_key", "").isEmpty());
+	public boolean isFeedbackEnabled() {
+		return CONF.feedbackEnabled();
 	}
 
-	public boolean isFeedbackEnabled() {
-		return Config.getConfigBoolean("feedback_enabled", false);
+	public boolean isNearMeFeatureEnabled() {
+		return CONF.postsNearMeEnabled();
 	}
 
 	public boolean isDefaultSpacePublic() {
-		return Config.getConfigBoolean("is_default_space_public", true);
+		return CONF.isDefaultSpacePublic();
 	}
 
 	public boolean isWebhooksEnabled() {
-		return Config.getConfigBoolean("webhooks_enabled", true);
+		return CONF.webhooksEnabled();
 	}
 
 	public boolean isAnonymityEnabled() {
-		return Config.getConfigBoolean("profile_anonimity_enabled", false);
+		return CONF.profileAnonimityEnabled();
 	}
 
 	public boolean isApiEnabled() {
-		return Config.getConfigBoolean("api_enabled", false);
+		return CONF.apiEnabled();
 	}
 
 	public boolean isFooterLinksEnabled() {
-		return Config.getConfigBoolean("footer_links_enabled", true);
+		return CONF.footerLinksEnabled();
+	}
+
+	public boolean isNotificationsAllowed() {
+		return CONF.notificationEmailsAllowed();
+	}
+
+	public boolean isNewPostNotificationAllowed() {
+		return isNotificationsAllowed() && CONF.emailsForNewPostsAllowed();
+	}
+
+	public boolean isFavTagsNotificationAllowed() {
+		return isNotificationsAllowed() && CONF.emailsForFavtagsAllowed();
+	}
+
+	public boolean isReplyNotificationAllowed() {
+		return isNotificationsAllowed() && CONF.emailsForRepliesAllowed();
+	}
+
+	public boolean isCommentNotificationAllowed() {
+		return isNotificationsAllowed() && CONF.emailsForCommentsAllowed();
 	}
 
 	public boolean isDarkModeEnabled() {
-		return Config.getConfigBoolean("dark_mode_enabled", true);
+		return CONF.darkModeEnabled();
+	}
+
+	public boolean isSlackAuthEnabled() {
+		return CONF.slackAuthEnabled();
+	}
+
+	public static boolean isGravatarEnabled() {
+		return CONF.gravatarsEnabled();
+	}
+
+	public static String gravatarPattern() {
+		return CONF.gravatarsPattern();
+	}
+
+	public static String getDefaultAvatar() {
+		return CONF.imagesLink() + "/anon.svg";
+	}
+
+	public static boolean isAvatarUploadsEnabled() {
+		return isImgurAvatarRepositoryEnabled() || isCloudinaryAvatarRepositoryEnabled();
+	}
+
+	public static boolean isImgurAvatarRepositoryEnabled() {
+		return !StringUtils.isBlank(CONF.imgurClientId()) && "imgur".equalsIgnoreCase(CONF.avatarRepository());
+	}
+
+	public static boolean isCloudinaryAvatarRepositoryEnabled() {
+		return !StringUtils.isBlank(CONF.cloudinaryUrl()) && "cloudinary".equalsIgnoreCase(CONF.avatarRepository());
 	}
 
 	public String getFooterHTML() {
-		return Config.getConfigParam("footer_html", "");
+		return CONF.footerHtml();
 	}
 
 	public boolean isNavbarLink1Enabled() {
@@ -717,11 +857,11 @@ public final class ScooldUtils {
 	}
 
 	public String getNavbarLink1URL() {
-		return Config.getConfigParam("navbar_link1_url", "");
+		return CONF.navbarCustomLink1Url();
 	}
 
 	public String getNavbarLink1Text() {
-		return Config.getConfigParam("navbar_link1_text", "Link1");
+		return CONF.navbarCustomLink1Text();
 	}
 
 	public boolean isNavbarLink2Enabled() {
@@ -729,11 +869,11 @@ public final class ScooldUtils {
 	}
 
 	public String getNavbarLink2URL() {
-		return Config.getConfigParam("navbar_link2_url", "");
+		return CONF.navbarCustomLink2Url();
 	}
 
 	public String getNavbarLink2Text() {
-		return Config.getConfigParam("navbar_link2_text", "Link2");
+		return CONF.navbarCustomLink2Text();
 	}
 
 	public boolean isNavbarMenuLink1Enabled() {
@@ -741,11 +881,11 @@ public final class ScooldUtils {
 	}
 
 	public String getNavbarMenuLink1URL() {
-		return Config.getConfigParam("navbar_menu_link1_url", "");
+		return CONF.navbarCustomMenuLink1Url();
 	}
 
 	public String getNavbarMenuLink1Text() {
-		return Config.getConfigParam("navbar_menu_link1_text", "Menu Link1");
+		return CONF.navbarCustomMenuLink1Text();
 	}
 
 	public boolean isNavbarMenuLink2Enabled() {
@@ -753,11 +893,15 @@ public final class ScooldUtils {
 	}
 
 	public String getNavbarMenuLink2URL() {
-		return Config.getConfigParam("navbar_menu_link2_url", "");
+		return CONF.navbarCustomMenuLink2Url();
 	}
 
 	public String getNavbarMenuLink2Text() {
-		return Config.getConfigParam("navbar_menu_link2_text", "Menu Link2");
+		return CONF.navbarCustomMenuLink2Text();
+	}
+
+	public boolean alwaysHideCommentForms() {
+		return CONF.alwaysHideCommentForms();
 	}
 
 	public Set<String> getCoreScooldTypes() {
@@ -777,9 +921,9 @@ public final class ScooldUtils {
 	}
 
 	public Pager pagerFromParams(String pageParamName, HttpServletRequest req) {
-		Pager p = new Pager();
-		p.setPage(Math.min(NumberUtils.toLong(req.getParameter(pageParamName), 1), Config.MAX_PAGES));
-		p.setLimit(NumberUtils.toInt(req.getParameter("limit"), Config.MAX_ITEMS_PER_PAGE));
+		Pager p = new Pager(CONF.maxItemsPerPage());
+		p.setPage(Math.min(NumberUtils.toLong(req.getParameter(pageParamName), 1), CONF.maxPages()));
+		p.setLimit(NumberUtils.toInt(req.getParameter("limit"), CONF.maxItemsPerPage()));
 		String lastKey = req.getParameter("lastKey");
 		String sort = req.getParameter("sortby");
 		String desc = req.getParameter("desc");
@@ -796,9 +940,10 @@ public final class ScooldUtils {
 	}
 
 	public String getLanguageCode(HttpServletRequest req) {
-		String langCodeFromConfig = Config.getConfigParam("default_language_code", "");
-		String cookieLoc = getCookieValue(req, LOCALE_COOKIE);
-		Locale requestLocale = langutils.getProperLocale(req.getLocale().toString());
+		String langCodeFromConfig = CONF.defaultLanguageCode();
+		String cookieLoc = getCookieValue(req, CONF.localeCookie());
+		Locale fromReq = (req == null) ? Locale.getDefault() : req.getLocale();
+		Locale requestLocale = langutils.getProperLocale(fromReq.toString());
 		return (cookieLoc != null) ? cookieLoc : (StringUtils.isBlank(langCodeFromConfig) ?
 				requestLocale.getLanguage() : langutils.getProperLocale(langCodeFromConfig).getLanguage());
 	}
@@ -893,8 +1038,12 @@ public final class ScooldUtils {
 				clSize = post.getComments().size();
 			} else {
 				post.setComments(cl);
+				if (clSize == post.getItemcount().getLimit() && pc.getCount(Utils.type(Comment.class),
+						Collections.singletonMap("parentid", post.getId())) > clSize) {
+					clSize++; // hack to show the "more" button
+				}
 			}
-			post.getItemcount().setCount(clSize + 1L); // hack to show the "more" button
+			post.getItemcount().setCount(clSize);
 		}
 		if (!forUpdate.isEmpty()) {
 			pc.updateAll(allPosts);
@@ -963,7 +1112,7 @@ public final class ScooldUtils {
 	}
 
 	public boolean isApiRequest(HttpServletRequest req) {
-		return req.getRequestURI().startsWith(CONTEXT_PATH + "/api/") || req.getRequestURI().equals(CONTEXT_PATH + "/api");
+		return req.getRequestURI().startsWith(CONF.serverContextPath() + "/api/") || req.getRequestURI().equals(CONF.serverContextPath() + "/api");
 	}
 
 	public boolean isAdmin(Profile authUser) {
@@ -980,30 +1129,26 @@ public final class ScooldUtils {
 	}
 
 	public boolean canComment(Profile authUser, HttpServletRequest req) {
-		return isAuthenticated(req) && ((authUser.hasBadge(ENTHUSIAST) ||
-				Config.getConfigBoolean("new_users_can_comment", true) ||
-				isMod(authUser)));
+		return isAuthenticated(req) && ((authUser.hasBadge(ENTHUSIAST) || CONF.newUsersCanComment() || isMod(authUser)));
 	}
 
 	public boolean postsNeedApproval() {
-		return Config.getConfigBoolean("posts_need_approval", false);
+		return CONF.postsNeedApproval();
 	}
 
 	public boolean postNeedsApproval(Profile authUser) {
-		return postsNeedApproval() &&
-				authUser.getVotes() < Config.getConfigInt("posts_rep_threshold", ENTHUSIAST_IFHAS) &&
-				!isMod(authUser);
+		return postsNeedApproval() && authUser.getVotes() < CONF.postsReputationThreshold() && !isMod(authUser);
 	}
 
 	public String getWelcomeMessage(Profile authUser) {
-		return authUser == null ? Config.getConfigParam("welcome_message", "") : "";
+		return authUser == null ? CONF.welcomeMessage() : "";
 	}
 
 	public String getWelcomeMessageOnLogin(Profile authUser) {
 		if (authUser == null) {
 			return "";
 		}
-		String welcomeMsgOnlogin = Config.getConfigParam("welcome_message_onlogin", "");
+		String welcomeMsgOnlogin = CONF.welcomeMessageOnLogin();
 		if (StringUtils.contains(welcomeMsgOnlogin, "{{")) {
 			welcomeMsgOnlogin = Utils.compileMustache(Collections.singletonMap("user",
 					ParaObjectUtils.getAnnotatedFields(authUser, false)), welcomeMsgOnlogin);
@@ -1024,7 +1169,7 @@ public final class ScooldUtils {
 	}
 
 	public List<Sysprop> getAllSpaces() {
-		if (allSpaces == null || allSpaces.isEmpty()) {
+		if (allSpaces == null) {
 			allSpaces = new LinkedList<>(pc.findQuery("scooldspace", "*", new Pager(Config.DEFAULT_LIMIT)));
 		}
 		return allSpaces;
@@ -1048,7 +1193,7 @@ public final class ScooldUtils {
 		boolean isMemberOfSpace = false;
 		for (String space : authUser.getSpaces()) {
 			String spaceId = getSpaceId(targetSpaceId);
-			if (StringUtils.startsWithIgnoreCase(space, spaceId + Config.SEPARATOR) || space.equalsIgnoreCase(spaceId)) {
+			if (StringUtils.startsWithIgnoreCase(space, spaceId + Para.getConfig().separator()) || space.equalsIgnoreCase(spaceId)) {
 				isMemberOfSpace = true;
 				break;
 			}
@@ -1064,11 +1209,11 @@ public final class ScooldUtils {
 		if (isAdmin(authUser) && req.getParameter("space") != null) {
 			Sysprop s = pc.read(getSpaceId(req.getParameter("space"))); // API override
 			if (s != null) {
-				return s.getId() + Config.SEPARATOR + s.getName();
+				return s.getId() + Para.getConfig().separator() + s.getName();
 			}
 		}
-		String spaceAttr = (String) req.getAttribute(SPACE_COOKIE);
-		String spaceValue = StringUtils.isBlank(spaceAttr) ? Utils.base64dec(getCookieValue(req, SPACE_COOKIE)) : spaceAttr;
+		String spaceAttr = (String) req.getAttribute(CONF.spaceCookie());
+		String spaceValue = StringUtils.isBlank(spaceAttr) ? Utils.base64dec(getCookieValue(req, CONF.spaceCookie())) : spaceAttr;
 		String space = getValidSpaceId(authUser, spaceValue);
 		return (isAllSpaces(space) && isMod(authUser)) ? DEFAULT_SPACE : verifyExistingSpace(authUser, space);
 	}
@@ -1076,32 +1221,37 @@ public final class ScooldUtils {
 	public void storeSpaceIdInCookie(String space, HttpServletRequest req, HttpServletResponse res) {
 		// directly set the space on the requests, overriding the cookie value
 		// used for setting the space from a direct URL to a particular space
-		req.setAttribute(SPACE_COOKIE, space);
-		HttpUtils.setRawCookie(SPACE_COOKIE, Utils.base64encURL(space.getBytes()),
-				req, res, false, StringUtils.isBlank(space) ? 0 : 365 * 24 * 60 * 60);
+		req.setAttribute(CONF.spaceCookie(), space);
+		HttpUtils.setRawCookie(CONF.spaceCookie(), Utils.base64encURL(space.getBytes()),
+				req, res, true, "Strict", StringUtils.isBlank(space) ? 0 : 365 * 24 * 60 * 60);
 	}
 
 	public String verifyExistingSpace(Profile authUser, String space) {
-		if (!isDefaultSpace(space) && !isAllSpaces(space) && pc.read(getSpaceId(space)) == null) {
-			if (authUser != null) {
-				authUser.removeSpace(space);
-				pc.update(authUser);
+		if (!isDefaultSpace(space) && !isAllSpaces(space)) {
+			Sysprop s = pc.read(getSpaceId(space));
+			if (s == null) {
+				if (authUser != null) {
+					authUser.removeSpace(space);
+					pc.update(authUser);
+				}
+				return DEFAULT_SPACE;
+			} else {
+				return s.getId() + Para.getConfig().separator() + s.getName(); // updates current space name in case it was renamed
 			}
-			return DEFAULT_SPACE;
 		}
 		return space;
 	}
 
 	public String getValidSpaceIdExcludingAll(Profile authUser, String space, HttpServletRequest req) {
 		String s = StringUtils.isBlank(space) ? getSpaceIdFromCookie(authUser, req) : space;
-		return isAllSpaces(s) ? getValidSpaceId(authUser, "x") : s;
+		return isAllSpaces(s) ? DEFAULT_SPACE : s;
 	}
 
 	private String getValidSpaceId(Profile authUser, String space) {
 		if (authUser == null) {
 			return DEFAULT_SPACE;
 		}
-		String defaultSpace = authUser.hasSpaces() ? authUser.getSpaces().iterator().next() : DEFAULT_SPACE;
+		String defaultSpace = authUser.hasSpaces() ? ALL_MY_SPACES : DEFAULT_SPACE;
 		String s = canAccessSpace(authUser, space) ? space : defaultSpace;
 		return StringUtils.isBlank(s) ? DEFAULT_SPACE : s;
 	}
@@ -1117,8 +1267,8 @@ public final class ScooldUtils {
 		if (StringUtils.isBlank(space)) {
 			return DEFAULT_SPACE;
 		}
-		String s = StringUtils.contains(space, Config.SEPARATOR) ?
-				StringUtils.substring(space, 0, space.lastIndexOf(Config.SEPARATOR)) : "scooldspace:" + space;
+		String s = StringUtils.contains(space, Para.getConfig().separator()) ?
+				StringUtils.substring(space, 0, space.lastIndexOf(Para.getConfig().separator())) : "scooldspace:" + space;
 		return "scooldspace".equals(s) ? space : s;
 	}
 
@@ -1158,7 +1308,7 @@ public final class ScooldUtils {
 
 	public Sysprop buildSpaceObject(String space) {
 		space = Utils.abbreviate(space, 255);
-		space = space.replaceAll(Config.SEPARATOR, "");
+		space = space.replaceAll(Para.getConfig().separator(), "");
 		String spaceId = getSpaceId(Utils.noSpaces(Utils.stripAndTrim(space, " "), "-"));
 		Sysprop s = new Sysprop(spaceId);
 		s.setType("scooldspace");
@@ -1171,7 +1321,7 @@ public final class ScooldUtils {
 		String defaultQuery = "*";
 		String q = StringUtils.trimToEmpty(query);
 		if (qf.isEmpty() || qf.length() > 1) {
-			q = q.replaceAll("[\\?]", "").trim();
+			q = q.replaceAll("[\\?<>]", "").trim();
 			q = q.replaceAll("$[\\*]*", "");
 			q = RegExUtils.removeAll(q, "AND");
 			q = RegExUtils.removeAll(q, "OR");
@@ -1194,6 +1344,60 @@ public final class ScooldUtils {
 		}
 	}
 
+	public String getUsersSearchQuery(String qs, String spaceFilter) {
+		qs = Utils.stripAndTrim(qs).toLowerCase();
+		if (!StringUtils.isBlank(qs)) {
+			String wildcardLower = qs.matches("[\\p{IsAlphabetic}]*") ? qs + "*" : qs;
+			String wildcardUpper = StringUtils.capitalize(wildcardLower);
+			String template = "(name:({1}) OR name:({2} OR {3}) OR properties.location:({0}) OR "
+					+ "properties.aboutme:({0}) OR properties.groups:({0}))";
+			qs = (StringUtils.isBlank(spaceFilter) ? "" : spaceFilter + " AND ") +
+					Utils.formatMessage(template, qs, StringUtils.capitalize(qs), wildcardLower, wildcardUpper);
+		} else {
+			qs = StringUtils.isBlank(spaceFilter) ? "*" : spaceFilter;
+		}
+		return qs;
+	}
+
+	public List<Post> fullQuestionsSearch(String query, Pager... pager) {
+		String typeFilter = Config._TYPE + ":(" + String.join(" OR ",
+						Utils.type(Question.class), Utils.type(Reply.class), Utils.type(Comment.class)) + ")";
+		String qs = StringUtils.isBlank(query) || query.startsWith("*") ? typeFilter : query + " AND " + typeFilter;
+		List<ParaObject> mixedResults = pc.findQuery("", qs, pager);
+		Predicate<ParaObject> isQuestion =  obj -> obj.getType().equals(Utils.type(Question.class));
+
+		Map<String, ParaObject> idsToQuestions = new HashMap<>(mixedResults.stream().filter(isQuestion).
+				collect(Collectors.toMap(q -> q.getId(), q -> q)));
+		Set<String> toRead = new LinkedHashSet<>();
+		mixedResults.stream().filter(isQuestion.negate()).forEach(obj -> {
+			if (!idsToQuestions.containsKey(obj.getParentid())) {
+				toRead.add(obj.getParentid());
+			}
+		});
+		// find all parent posts but this excludes parents of parents - i.e. won't work for comments in answers
+		List<Post> parentPostsLevel1 = pc.readAll(new ArrayList<>(toRead));
+		parentPostsLevel1.stream().filter(isQuestion).forEach(q -> idsToQuestions.put(q.getId(), q));
+
+		toRead.clear();
+
+		// read parents of parents if any
+		parentPostsLevel1.stream().filter(isQuestion.negate()).forEach(obj -> {
+			if (!idsToQuestions.containsKey(obj.getParentid())) {
+				toRead.add(obj.getParentid());
+			}
+		});
+		List<Post> parentPostsLevel2 = pc.readAll(new ArrayList<>(toRead));
+		parentPostsLevel2.stream().forEach(q -> idsToQuestions.put(q.getId(), q));
+
+		ArrayList<Post> results = new ArrayList<Post>(idsToQuestions.size());
+		for (ParaObject result : idsToQuestions.values()) {
+			if (result instanceof Post) {
+				results.add((Post) result);
+			}
+		}
+		return results;
+	}
+
 	public String getMacroCode(String key) {
 		return WHITELISTED_MACROS.getOrDefault(key, "");
 	}
@@ -1205,6 +1409,24 @@ public final class ScooldUtils {
 
 	public boolean canEdit(Post showPost, Profile authUser) {
 		return authUser != null ? (authUser.hasBadge(TEACHER) || isMod(authUser) || isMine(showPost, authUser)) : false;
+	}
+
+	public boolean canDelete(Post showPost, Profile authUser) {
+		return canDelete(showPost, authUser, null);
+	}
+
+	public boolean canDelete(Post showPost, Profile authUser, String approvedAnswerId) {
+		if (authUser == null) {
+			return false;
+		}
+		if (CONF.deleteProtectionEnabled()) {
+			if (showPost.isReply()) {
+				return isMine(showPost, authUser) && !StringUtils.equals(approvedAnswerId, showPost.getId());
+			} else {
+				return isMine(showPost, authUser) && showPost.getAnswercount() == 0;
+			}
+		}
+		return isMine(showPost, authUser);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -1261,24 +1483,23 @@ public final class ScooldUtils {
 		return error;
 	}
 
-	public static String getGravatar(String email) {
-		if (StringUtils.isBlank(email)) {
-			return "https://www.gravatar.com/avatar?d=retro&size=400";
-		}
-		return "https://www.gravatar.com/avatar/" + Utils.md5(email.toLowerCase()) + "?size=400&d=retro";
-	}
-
-	public static String getGravatar(Profile profile) {
-		if (profile == null || profile.getUser() == null) {
-			return "https://www.gravatar.com/avatar?d=retro&size=400";
-		} else {
-			return getGravatar(profile.getUser().getEmail());
-		}
+	public String getFullAvatarURL(Profile profile, AvatarFormat format) {
+		return avatarRepository.getLink(profile, format);
 	}
 
 	public void clearSession(HttpServletRequest req, HttpServletResponse res) {
 		if (req != null) {
-			HttpUtils.removeStateParam(AUTH_COOKIE, req, res);
+			String jwt = HttpUtils.getStateParam(CONF.authCookie(), req);
+			if (!StringUtils.isBlank(jwt)) {
+				if (CONF.oneSessionPerUser()) {
+					synchronized (pc) {
+						pc.setAccessToken(jwt);
+						pc.revokeAllTokens();
+						pc.signOut();
+					}
+				}
+				HttpUtils.removeStateParam(CONF.authCookie(), req, res);
+			}
 			HttpUtils.removeStateParam("dark-mode", req, res);
 		}
 	}
@@ -1314,12 +1535,12 @@ public final class ScooldUtils {
 		List<String> badgelist = new ArrayList<String>();
 		if (authUser != null && !isAjaxRequest(req)) {
 			long oneYear = authUser.getTimestamp() + (365 * 24 * 60 * 60 * 1000);
-			addBadgeOnce(authUser, Profile.Badge.ENTHUSIAST, authUser.getVotes() >= ENTHUSIAST_IFHAS);
-			addBadgeOnce(authUser, Profile.Badge.FRESHMAN, authUser.getVotes() >= FRESHMAN_IFHAS);
-			addBadgeOnce(authUser, Profile.Badge.SCHOLAR, authUser.getVotes() >= SCHOLAR_IFHAS);
-			addBadgeOnce(authUser, Profile.Badge.TEACHER, authUser.getVotes() >= TEACHER_IFHAS);
-			addBadgeOnce(authUser, Profile.Badge.PROFESSOR, authUser.getVotes() >= PROFESSOR_IFHAS);
-			addBadgeOnce(authUser, Profile.Badge.GEEK, authUser.getVotes() >= GEEK_IFHAS);
+			addBadgeOnce(authUser, Profile.Badge.ENTHUSIAST, authUser.getVotes() >= CONF.enthusiastIfHasRep());
+			addBadgeOnce(authUser, Profile.Badge.FRESHMAN, authUser.getVotes() >= CONF.freshmanIfHasRep());
+			addBadgeOnce(authUser, Profile.Badge.SCHOLAR, authUser.getVotes() >= CONF.scholarIfHasRep());
+			addBadgeOnce(authUser, Profile.Badge.TEACHER, authUser.getVotes() >= CONF.teacherIfHasRep());
+			addBadgeOnce(authUser, Profile.Badge.PROFESSOR, authUser.getVotes() >= CONF.professorIfHasRep());
+			addBadgeOnce(authUser, Profile.Badge.GEEK, authUser.getVotes() >= CONF.geekIfHasRep());
 			addBadgeOnce(authUser, Profile.Badge.SENIOR, (System.currentTimeMillis() - authUser.getTimestamp()) >= oneYear);
 
 			if (!StringUtils.isBlank(authUser.getNewbadges())) {
@@ -1357,21 +1578,24 @@ public final class ScooldUtils {
 	}
 
 	public String compileEmailTemplate(Map<String, Object> model) {
-		model.put("footerhtml", Config.getConfigParam("emails_footer_html",
-				"<a href=\"" + ScooldServer.getServerURL() + "\">" + Config.APP_NAME + "</a> &bull; "
-				+ "<a href=\"https://scoold.com\">Powered by Scoold</a>"));
-		String fqdn = Config.getConfigParam("rewrite_inbound_links_with_fqdn", "");
+		model.put("footerhtml", CONF.emailsFooterHtml());
+		String fqdn = CONF.rewriteInboundLinksWithFQDN();
 		if (!StringUtils.isBlank(fqdn)) {
 			model.entrySet().stream().filter(e -> (e.getValue() instanceof String)).forEachOrdered(e -> {
-				model.put(e.getKey(), StringUtils.replace((String) e.getValue(), ScooldServer.getServerURL(), fqdn));
+				model.put(e.getKey(), StringUtils.replace((String) e.getValue(), CONF.serverUrl(), fqdn));
 			});
 		}
 		return Utils.compileMustache(model, loadEmailTemplate("notify"));
 	}
 
 	public boolean isValidJWToken(String jwt) {
+		String appSecretKey = CONF.appSecretKey();
+		String masterSecretKey = CONF.paraSecretKey();
+		return isValidJWToken(appSecretKey, jwt) || isValidJWToken(masterSecretKey, jwt);
+	}
+
+	boolean isValidJWToken(String secret, String jwt) {
 		try {
-			String secret = Config.getConfigParam("app_secret_key", "");
 			if (secret != null && jwt != null) {
 				JWSVerifier verifier = new MACVerifier(secret);
 				SignedJWT sjwt = SignedJWT.parse(jwt);
@@ -1397,11 +1621,11 @@ public final class ScooldUtils {
 	}
 
 	public SignedJWT generateJWToken(Map<String, Object> claims) {
-		return generateJWToken(claims, Config.JWT_EXPIRES_AFTER_SEC);
+		return generateJWToken(claims, CONF.jwtExpiresAfterSec());
 	}
 
 	public SignedJWT generateJWToken(Map<String, Object> claims, long validitySeconds) {
-		String secret = Config.getConfigParam("app_secret_key", "");
+		String secret = CONF.appSecretKey();
 		if (!StringUtils.isBlank(secret)) {
 			try {
 				Date now = new Date();
@@ -1411,7 +1635,7 @@ public final class ScooldUtils {
 					claimsSet.expirationTime(new Date(now.getTime() + (validitySeconds * 1000)));
 				}
 				claimsSet.notBeforeTime(now);
-				claimsSet.claim(Config._APPID, Config.getConfigParam("access_key", "x"));
+				claimsSet.claim(Config._APPID, CONF.paraAccessKey());
 				claims.entrySet().forEach((claim) -> claimsSet.claim(claim.getKey(), claim.getValue()));
 				JWSSigner signer = new MACSigner(secret);
 				SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet.build());
@@ -1495,36 +1719,38 @@ public final class ScooldUtils {
 
 	public void setSecurityHeaders(String nonce, HttpServletRequest request, HttpServletResponse response) {
 		// CSP Header
-		if (Config.getConfigBoolean("csp_header_enabled", true)) {
+		if (CONF.cspHeaderEnabled()) {
 			response.setHeader("Content-Security-Policy",
-					Config.getConfigParam("csp_header", getDefaultContentSecurityPolicy(request.isSecure())).
-							replaceAll("\\{\\{nonce\\}\\}", nonce));
+					(request.isSecure() ? "upgrade-insecure-requests; " : "") + CONF.cspHeader(nonce));
 		}
 		// HSTS Header
-		if (Config.getConfigBoolean("hsts_header_enabled", true)) {
+		if (CONF.hstsHeaderEnabled()) {
 			response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 		}
 		// Frame Options Header
-		if (Config.getConfigBoolean("framing_header_enabled", true)) {
+		if (CONF.framingHeaderEnabled()) {
 			response.setHeader("X-Frame-Options", "SAMEORIGIN");
 		}
 		// XSS Header
-		if (Config.getConfigBoolean("xss_header_enabled", true)) {
+		if (CONF.xssHeaderEnabled()) {
 			response.setHeader("X-XSS-Protection", "1; mode=block");
 		}
 		// Content Type Header
-		if (Config.getConfigBoolean("contenttype_header_enabled", true)) {
+		if (CONF.contentTypeHeaderEnabled()) {
 			response.setHeader("X-Content-Type-Options", "nosniff");
 		}
 		// Referrer Header
-		if (Config.getConfigBoolean("referrer_header_enabled", true)) {
+		if (CONF.referrerHeaderEnabled()) {
 			response.setHeader("Referrer-Policy", "strict-origin");
+		}
+		// Permissions Policy Header
+		if (CONF.permissionsHeaderEnabled()) {
+			response.setHeader("Permissions-Policy", "geolocation=()");
 		}
 	}
 
 	public boolean cookieConsentGiven(HttpServletRequest request) {
-		return !Config.getConfigBoolean("cookie_consent_required", false) ||
-				"allow".equals(HttpUtils.getCookieValue(request, "cookieconsent_status"));
+		return !CONF.cookieConsentRequired() || "allow".equals(HttpUtils.getCookieValue(request, "cookieconsent_status"));
 	}
 
 	public String base64DecodeScript(String encodedScript) {
@@ -1540,17 +1766,11 @@ public final class ScooldUtils {
 	}
 
 	public Map<String, Object> getExternalScripts() {
-		if (Config.getConfig().hasPath("external_scripts")) {
-			ConfigObject extScripts = Config.getConfig().getObject("external_scripts");
-			if (extScripts != null && !extScripts.isEmpty()) {
-				return new TreeMap<>(extScripts.unwrapped());
-			}
-		}
-		return Collections.emptyMap();
+		return CONF.externalScripts();
 	}
 
 	public List<String> getExternalStyles() {
-		String extStyles = Config.getConfigParam("external_styles", "");
+		String extStyles = CONF.externalStyles();
 		if (!StringUtils.isBlank(extStyles)) {
 			String[] styles = extStyles.split("\\s*,\\s*");
 			if (!StringUtils.isBlank(extStyles) && styles != null && styles.length > 0) {
@@ -1570,7 +1790,7 @@ public final class ScooldUtils {
 		try {
 			Sysprop custom = getCustomTheme();
 			String themeName = custom.getName();
-			String inline = Config.getConfigParam("inline_css", "");
+			String inline = CONF.inlineCSS();
 			String loadedTheme;
 			if ("default".equalsIgnoreCase(themeName) || StringUtils.isBlank(themeName)) {
 				return inline;
@@ -1581,7 +1801,7 @@ public final class ScooldUtils {
 				if (StringUtils.isBlank(loadedTheme)) {
 					FILE_CACHE.put("theme", "default");
 					custom.setName("default");
-					pc.update(custom);
+					customTheme = pc.update(custom);
 					return inline;
 				} else {
 					FILE_CACHE.put("theme", themeName);
@@ -1597,37 +1817,28 @@ public final class ScooldUtils {
 	}
 
 	public void setCustomTheme(String themeName, String themeCSS) {
-		String id = "theme" + Config.SEPARATOR + "custom";
+		String id = "theme" + Para.getConfig().separator() + "custom";
 		boolean isCustom = "custom".equalsIgnoreCase(themeName);
 		String css = isCustom ? themeCSS : "";
 		Sysprop custom = new Sysprop(id);
 		custom.setName(StringUtils.isBlank(css) && isCustom ? "default" : themeName);
 		custom.addProperty("theme", css);
-		pc.create(custom);
+		customTheme = pc.create(custom);
 		FILE_CACHE.put("theme", themeName);
 		FILE_CACHE.put(getThemeKey(themeName), isCustom ? css : loadResource(getThemeKey(themeName)));
 	}
 
 	public Sysprop getCustomTheme() {
-		String id = "theme" + Config.SEPARATOR + "custom";
-		return (Sysprop) Optional.ofNullable(pc.read(id)).orElseGet(this::getDefaultThemeObject);
-		// !!!!!!!: make this more efficient by storing the selected theme in cookie, then get from cache.
-//		String selectedTheme = FILE_CACHE.getOrDefault("theme", "default");
-//		if (selectedTheme != null && FILE_CACHE.containsKey(getThemeKey(selectedTheme))) {
-//			Sysprop s = new Sysprop(id);
-//			s.setName(selectedTheme);
-//			s.addProperty("theme", FILE_CACHE.get(getThemeKey(selectedTheme)));
-//			return s;
-//		} else if ("custom".equalsIgnoreCase(selectedTheme)) {
-//			return (Sysprop) Optional.ofNullable(pc.read("theme" + Config.SEPARATOR + "custom")).
-//					orElseGet(() -> getDefaultThemeObject());
-//		}
-//		return getDefaultThemeObject();
+		String id = "theme" + Para.getConfig().separator() + "custom";
+		if (customTheme == null) {
+			customTheme = (Sysprop) Optional.ofNullable(pc.read(id)).orElseGet(this::getDefaultThemeObject);
+		}
+		return customTheme;
 	}
 
 	private Sysprop getDefaultThemeObject() {
 		String themeName = "default";
-		Sysprop s = new Sysprop("theme" + Config.SEPARATOR + "custom");
+		Sysprop s = new Sysprop("theme" + Para.getConfig().separator() + "custom");
 		s.setName(themeName);
 		s.addProperty("theme", "");
 		FILE_CACHE.put("theme", themeName);
@@ -1643,37 +1854,43 @@ public final class ScooldUtils {
 		return loadResource("themes/default.css");
 	}
 
+	public String getSmallLogoUrl() {
+		String defaultLogo = CONF.serverUrl() + CONF.imagesLink() + "/logowhite.png";
+		String logoUrl = CONF.logoSmallUrl();
+		String defaultMainLogoUrl = CONF.imagesLink() + "/logo.svg";
+		String mainLogoUrl = CONF.logoUrl();
+		if (!defaultLogo.equals(logoUrl)) {
+			return logoUrl;
+		} else if (!mainLogoUrl.equals(defaultMainLogoUrl)) {
+			return mainLogoUrl;
+		}
+		return logoUrl;
+	}
+
 	public String getCSPNonce() {
 		return Utils.generateSecurityToken(16);
 	}
 
-	public String getDefaultContentSecurityPolicy(boolean isSecure) {
-		return (isSecure ? "upgrade-insecure-requests; " : "")
-				+ "default-src 'self'; "
-				+ "base-uri 'self'; "
-				+ "form-action 'self' " + Config.getConfigParam("signout_url", "") + "; "
-				+ "connect-src 'self' " + (Config.IN_PRODUCTION ? getServerURL() : "")
-				+ " scoold.com www.google-analytics.com www.googletagmanager.com " + Config.getConfigParam("csp_connect_sources", "") + "; "
-				+ "frame-src 'self' accounts.google.com staticxx.facebook.com " + Config.getConfigParam("csp_frame_sources", "") + "; "
-				+ "font-src 'self' cdnjs.cloudflare.com fonts.gstatic.com fonts.googleapis.com " + Config.getConfigParam("csp_font_sources", "") + "; "
-				+ "style-src 'self' 'unsafe-inline' fonts.googleapis.com " // unsafe-inline required by MathJax and Google Maps!
-				+ (CDN_URL.startsWith("/") ? "" : CDN_URL) + " " +
-					Config.getConfigParam("csp_style_sources", Config.getConfigParam("stylesheet_url", "") + " " +
-							Config.getConfigParam("external_styles", "").replaceAll(",", "")) + "; "
-				+ "img-src 'self' https: data:; "
-				+ "object-src 'none'; "
-				+ "report-uri /reports/cspv; "
-				+ "script-src 'unsafe-inline' https: 'nonce-{{nonce}}' 'strict-dynamic';"; // CSP2 backward compatibility
+	public String getFacebookLoginURL() {
+		return "https://www.facebook.com/dialog/oauth?client_id=" + CONF.facebookAppId() +
+				"&response_type=code&scope=email&redirect_uri=" + getParaEndpoint() +
+				"/facebook_auth&state=" + getParaAppId();
+	}
+
+	public String getGoogleLoginURL() {
+		return "https://accounts.google.com/o/oauth2/v2/auth?" +
+				"client_id=" + CONF.googleAppId() + "&response_type=code&scope=openid%20profile%20email&redirect_uri="
+				+ getParaEndpoint() + "/google_auth&state=" + getParaAppId();
 	}
 
 	public String getGitHubLoginURL() {
-		return "https://github.com/login/oauth/authorize?response_type=code&client_id=" + Config.GITHUB_APP_ID +
+		return "https://github.com/login/oauth/authorize?response_type=code&client_id=" + CONF.githubAppId() +
 				"&scope=user%3Aemail&state=" + getParaAppId() +
 				"&redirect_uri=" + getParaEndpoint() + "/github_auth";
 	}
 
 	public String getLinkedInLoginURL() {
-		return "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=" + Config.LINKEDIN_APP_ID +
+		return "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=" + CONF.linkedinAppId() +
 				"&scope=r_liteprofile%20r_emailaddress&state=" + getParaAppId() +
 				"&redirect_uri=" + getParaEndpoint() + "/linkedin_auth";
 	}
@@ -1683,79 +1900,85 @@ public final class ScooldUtils {
 	}
 
 	public String getMicrosoftLoginURL() {
-		return "https://login.microsoftonline.com/" + Config.getConfigParam("ms_tenant_id", "common") +
-				"/oauth2/v2.0/authorize?response_type=code&client_id=" + Config.MICROSOFT_APP_ID +
+		return "https://login.microsoftonline.com/" + CONF.microsoftTenantId() +
+				"/oauth2/v2.0/authorize?response_type=code&client_id=" + CONF.microsoftAppId() +
 				"&scope=https%3A%2F%2Fgraph.microsoft.com%2Fuser.read&state=" + getParaAppId() +
 				"&redirect_uri=" + getParaEndpoint() + "/microsoft_auth";
 	}
 
 	public String getSlackLoginURL() {
-		return "https://slack.com/oauth/v2/authorize?response_type=code&client_id=" + Config.SLACK_APP_ID +
+		return "https://slack.com/oauth/v2/authorize?response_type=code&client_id=" + CONF.slackAppId() +
 				"&user_scope=identity.basic%20identity.email%20identity.team%20identity.avatar&state=" + getParaAppId() +
 				"&redirect_uri=" + getParaEndpoint() + "/slack_auth";
 	}
 
 	public String getAmazonLoginURL() {
-		return "https://www.amazon.com/ap/oa?response_type=code&client_id=" + Config.AMAZON_APP_ID +
+		return "https://www.amazon.com/ap/oa?response_type=code&client_id=" + CONF.amazonAppId() +
 				"&scope=profile&state=" + getParaAppId() +
 				"&redirect_uri=" + getParaEndpoint() + "/amazon_auth";
 	}
 
 	public String getOAuth2LoginURL() {
-		return Config.getConfigParam("security.oauth.authz_url", "") + "?" +
-				"response_type=code&client_id=" + Config.getConfigParam("oa2_app_id", "") +
-				"&scope=" + Config.getConfigParam("security.oauth.scope", "") + "&state=" + getParaAppId() +
+		return CONF.oauthAuthorizationUrl("") + "?" +
+				"response_type=code&client_id=" + CONF.oauthAppId("") +
+				"&scope=" + CONF.oauthScope("") + "&state=" + getParaAppId() +
 				"&redirect_uri=" + getParaEndpoint() + "/oauth2_auth";
 	}
 
 	public String getOAuth2SecondLoginURL() {
-		return Config.getConfigParam("security.oauthsecond.authz_url", "") + "?" +
-				"response_type=code&client_id=" + Config.getConfigParam("oa2second_app_id", "") +
-				"&scope=" + Config.getConfigParam("security.oauthsecond.scope", "") + "&state=" + getParaAppId() +
+		return CONF.oauthAuthorizationUrl("second") + "?" +
+				"response_type=code&client_id=" + CONF.oauthAppId("second") +
+				"&scope=" +  CONF.oauthScope("second") + "&state=" + getParaAppId() +
 				"&redirect_uri=" + getParaEndpoint() + "/oauth2_auth";
 	}
 
 	public String getOAuth2ThirdLoginURL() {
-		return Config.getConfigParam("security.oauththird.authz_url", "") + "?" +
-				"response_type=code&client_id=" + Config.getConfigParam("oa2third_app_id", "") +
-				"&scope=" + Config.getConfigParam("security.oauththird.scope", "") + "&state=" + getParaAppId() +
+		return CONF.oauthAuthorizationUrl("third") + "?" +
+				"response_type=code&client_id=" + CONF.oauthAppId("third") +
+				"&scope=" +  CONF.oauthScope("third") + "&state=" + getParaAppId() +
 				"&redirect_uri=" + getParaEndpoint() + "/oauth2_auth";
 	}
 
 	public String getParaEndpoint() {
-		return Config.getConfigParam("security.redirect_uri", pc.getEndpoint());
+		return CONF.redirectUri();
 	}
 
 	public String getParaAppId() {
-		return StringUtils.removeStart(Config.getConfigParam("access_key", "app:scoold"), "app:");
+		return StringUtils.removeStart(CONF.paraAccessKey(), "app:");
 	}
 
 	public String getFirstConfiguredLoginURL() {
-		if (!Config.GITHUB_APP_ID.isEmpty()) {
+		if (!CONF.facebookAppId().isEmpty()) {
+			return getFacebookLoginURL();
+		}
+		if (!CONF.googleAppId().isEmpty()) {
+			return getGoogleLoginURL();
+		}
+		if (!CONF.githubAppId().isEmpty()) {
 			return getGitHubLoginURL();
 		}
-		if (!Config.LINKEDIN_APP_ID.isEmpty()) {
+		if (!CONF.linkedinAppId().isEmpty()) {
 			return getLinkedInLoginURL();
 		}
-		if (!Config.TWITTER_APP_ID.isEmpty()) {
+		if (!CONF.twitterAppId().isEmpty()) {
 			return getTwitterLoginURL();
 		}
-		if (!Config.MICROSOFT_APP_ID.isEmpty()) {
+		if (!CONF.microsoftAppId().isEmpty()) {
 			return getMicrosoftLoginURL();
 		}
-		if (!Config.SLACK_APP_ID.isEmpty()) {
+		if (isSlackAuthEnabled()) {
 			return getSlackLoginURL();
 		}
-		if (!Config.AMAZON_APP_ID.isEmpty()) {
+		if (!CONF.amazonAppId().isEmpty()) {
 			return getAmazonLoginURL();
 		}
-		if (!Config.getConfigParam("oa2_app_id", "").isEmpty()) {
+		if (!CONF.oauthAppId("").isEmpty()) {
 			return getOAuth2LoginURL();
 		}
-		if (!Config.getConfigParam("oa2second_app_id", "").isEmpty()) {
+		if (!CONF.oauthAppId("second").isEmpty()) {
 			return getOAuth2SecondLoginURL();
 		}
-		if (!Config.getConfigParam("oa2third_app_id", "").isEmpty()) {
+		if (!CONF.oauthAppId("third").isEmpty()) {
 			return getOAuth2ThirdLoginURL();
 		}
 		return SIGNINLINK + "?code=3&error=true";

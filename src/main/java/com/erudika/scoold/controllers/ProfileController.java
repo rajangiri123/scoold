@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,23 +17,32 @@
  */
 package com.erudika.scoold.controllers;
 
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
 import com.erudika.para.core.User;
 import static com.erudika.para.core.User.Groups.MODS;
 import static com.erudika.para.core.User.Groups.USERS;
+import com.erudika.para.core.utils.Pager;
 import com.erudika.para.core.utils.ParaObjectUtils;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.scoold.ScooldConfig;
 import static com.erudika.scoold.ScooldServer.PEOPLELINK;
+import static com.erudika.scoold.ScooldServer.PROFILELINK;
+import static com.erudika.scoold.ScooldServer.SIGNINLINK;
 import com.erudika.scoold.core.Post;
 import com.erudika.scoold.core.Profile;
 import com.erudika.scoold.core.Profile.Badge;
+import com.erudika.scoold.core.Question;
+import com.erudika.scoold.core.Reply;
 import com.erudika.scoold.utils.ScooldUtils;
-import java.util.List;
+import com.erudika.scoold.utils.avatars.*;
+import java.util.*;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,11 +50,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import static com.erudika.scoold.ScooldServer.PROFILELINK;
-import static com.erudika.scoold.ScooldServer.SIGNINLINK;
-import com.erudika.scoold.core.Question;
-import com.erudika.scoold.core.Reply;
-import java.util.ArrayList;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 /**
  *
@@ -55,11 +60,16 @@ import java.util.ArrayList;
 @RequestMapping("/profile")
 public class ProfileController {
 
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 	private final ScooldUtils utils;
+	private final GravatarAvatarGenerator gravatarAvatarGenerator;
+	private final AvatarRepository avatarRepository;
 
 	@Inject
-	public ProfileController(ScooldUtils utils) {
+	public ProfileController(ScooldUtils utils, GravatarAvatarGenerator gravatarAvatarGenerator, AvatarRepositoryProxy avatarRepository) {
 		this.utils = utils;
+		this.gravatarAvatarGenerator = gravatarAvatarGenerator;
+		this.avatarRepository = avatarRepository;
 	}
 
 	@GetMapping({"", "/{id}/**"})
@@ -97,21 +107,22 @@ public class ProfileController {
 		List<? extends Post> answerslist = getAnswers(authUser, showUser, isMyProfile, itemcount2);
 
 		model.addAttribute("path", "profile.vm");
-		model.addAttribute("title", utils.getLang(req).get("profile.title") + " - " + showUser.getName());
+		model.addAttribute("title", showUser.getName());
 		model.addAttribute("description", getUserDescription(showUser, itemcount1.getCount(), itemcount2.getCount()));
-		model.addAttribute("ogimage", showUser.getPicture());
+		model.addAttribute("ogimage", utils.getFullAvatarURL(showUser, AvatarFormat.Profile));
 		model.addAttribute("includeGMapsScripts", utils.isNearMeFeatureEnabled());
 		model.addAttribute("showUser", showUser);
 		model.addAttribute("isMyProfile", isMyProfile);
 		model.addAttribute("badgesCount", showUser.getBadgesMap().size());
 		model.addAttribute("canEdit", isMyProfile || canEditProfile(authUser, id));
-		model.addAttribute("canEditAvatar", Config.getConfigBoolean("avatar_edits_enabled", true));
-		model.addAttribute("gravatarPicture", utils.getGravatar(showUser));
+		model.addAttribute("canEditAvatar", CONF.avatarEditsEnabled());
+		model.addAttribute("gravatarPicture", gravatarAvatarGenerator.getLink(showUser, AvatarFormat.Profile));
+		model.addAttribute("isGravatarPicture", gravatarAvatarGenerator.isLink(showUser.getPicture()));
 		model.addAttribute("itemcount1", itemcount1);
 		model.addAttribute("itemcount2", itemcount2);
 		model.addAttribute("questionslist", questionslist);
 		model.addAttribute("answerslist", answerslist);
-		model.addAttribute("nameEditsAllowed", Config.getConfigBoolean("name_edits_enabled", true));
+		model.addAttribute("nameEditsAllowed", CONF.nameEditsEnabled());
 		return "base";
 	}
 
@@ -161,10 +172,8 @@ public class ProfileController {
 				showUser.setAboutme(aboutme);
 				updateProfile = true;
 			}
-			if (Config.getConfigBoolean("avatar_edits_enabled", true) ||
-					Config.getConfigBoolean("name_edits_enabled", true)) {
-				updateProfile = updateUserPictureAndName(showUser, picture, name);
-			}
+
+			updateProfile = updateUserPictureAndName(showUser, picture, name) || updateProfile;
 
 			boolean isComplete = showUser.isComplete() && isMyid(authUser, showUser.getId());
 			if (updateProfile || utils.addBadgeOnce(showUser, Badge.NICEPROFILE, isComplete)) {
@@ -173,6 +182,45 @@ public class ProfileController {
 			model.addAttribute("user", showUser);
 		}
 		return "redirect:" + PROFILELINK + (isMyid(authUser, id) ? "" : "/" + id);
+	}
+
+	@SuppressWarnings("unchecked")
+	@ResponseBody
+	@PostMapping(value = "/{id}/cloudinary-upload-link", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Map<String, Object>> generateCloudinaryUploadLink(@PathVariable String id, HttpServletRequest req) {
+		if (!ScooldUtils.isCloudinaryAvatarRepositoryEnabled()) {
+			return ResponseEntity.status(404).build();
+		}
+
+		Profile authUser = utils.getAuthUser(req);
+		Profile showUser = getProfileForEditing(id, authUser);
+		if (showUser == null) {
+			return ResponseEntity.status(403).build();
+		}
+
+		String preset = "avatar";
+		String publicId = "avatars/" + id;
+		long timestamp = Utils.timestamp() / 1000;
+		Cloudinary cloudinary = new Cloudinary(CONF.cloudinaryUrl());
+		String signature = cloudinary.apiSignRequest(ObjectUtils.asMap(
+			"public_id", publicId,
+			"timestamp", String.valueOf(timestamp),
+			"upload_preset", preset
+		), cloudinary.config.apiSecret);
+
+		Map<String, Object> response = new HashMap<String, Object>();
+		response.put("url", "https://api.cloudinary.com/v1_1/" + cloudinary.config.cloudName + "/image/upload");
+		Map<String, Object> data = new HashMap<String, Object>();
+		data.put("resource_type", "image");
+		data.put("public_id", publicId);
+		data.put("upload_preset", preset);
+		data.put("filename", id);
+		data.put("timestamp", timestamp);
+		data.put("api_key", cloudinary.config.apiKey);
+		data.put("signature", signature);
+		response.put("data", data);
+
+		return ResponseEntity.ok().body(response);
 	}
 
 	private Profile getProfileForEditing(String id, Profile authUser) {
@@ -186,17 +234,13 @@ public class ProfileController {
 		boolean updateProfile = false;
 		boolean updateUser = false;
 		User u = showUser.getUser();
-		if (Config.getConfigBoolean("avatar_edits_enabled", true) &&
-				!StringUtils.isBlank(picture) && (Utils.isValidURL(picture) || picture.startsWith("data:"))) {
-			showUser.setPicture(picture);
-			if (!u.getPicture().equals(picture) && !picture.contains("gravatar.com")) {
-				u.setPicture(picture);
-				updateUser = true;
-			}
-			updateProfile = true;
+
+		if (CONF.avatarEditsEnabled() && !StringUtils.isBlank(picture)) {
+			updateProfile = avatarRepository.store(showUser, picture);
 		}
-		if (Config.getConfigBoolean("name_edits_enabled", true) && !StringUtils.isBlank(name)) {
-			showUser.setName(name);
+
+		if (CONF.nameEditsEnabled() && !StringUtils.isBlank(name)) {
+			showUser.setName(StringUtils.abbreviate(name, 256));
 			if (StringUtils.isBlank(showUser.getOriginalName())) {
 				showUser.setOriginalName(name);
 			}
@@ -206,6 +250,7 @@ public class ProfileController {
 			}
 			updateProfile = true;
 		}
+
 		if (updateUser) {
 			utils.getParaClient().update(u);
 		}

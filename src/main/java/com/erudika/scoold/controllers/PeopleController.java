@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ package com.erudika.scoold.controllers;
 
 import com.erudika.para.client.ParaClient;
 import com.erudika.para.core.ParaObject;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Utils;
 import static com.erudika.scoold.ScooldServer.PEOPLELINK;
 import static com.erudika.scoold.ScooldServer.SIGNINLINK;
 import com.erudika.scoold.core.Profile;
@@ -37,7 +37,6 @@ import java.util.Map;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.ws.rs.client.Entity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -108,7 +107,7 @@ public class PeopleController {
 		String selection = req.getParameter("selection");
 		if (isAdmin && ("all".equals(selection) || selectedUsers != null)) {
 			// find all user objects even if there are more than 10000 users in the system
-			Pager pager = new Pager(1, "_docid", false, Config.MAX_ITEMS_PER_PAGE);
+			Pager pager = new Pager(1, "_docid", false, ScooldUtils.getConfig().maxItemsPerPage());
 			List<Profile> profiles;
 			LinkedList<Map<String, Object>> toUpdate = new LinkedList<>();
 			List<String> spaces = (selectedSpaces == null || selectedSpaces.length == 0) ?
@@ -137,19 +136,22 @@ public class PeopleController {
 				batch.add(toUpdate.pop());
 				if (batch.size() >= 100) {
 					// partial batch update
-					pc.invokePatch("_batch", Entity.json(batch));
+					pc.invokePatch("_batch", batch, Map.class);
 					batch.clear();
 				}
 			}
 			if (!batch.isEmpty()) {
-				pc.invokePatch("_batch", Entity.json(batch));
+				pc.invokePatch("_batch", batch, Map.class);
 			}
 		}
 		return "redirect:" + PEOPLELINK + (isAdmin ? "?" + req.getQueryString() : "");
 	}
 
 	@GetMapping("/avatar")
-	public void avatar(@RequestParam(required = false) String url, HttpServletResponse res, Model model) {
-		HttpUtils.getAvatar(url, res);
+	public void avatar(HttpServletRequest req, HttpServletResponse res, Model model) {
+		// prevents reflected XSS. see https://brutelogic.com.br/poc.svg
+		// for some reason the CSP header is not sent on these responses by the ScooldInterceptor
+		utils.setSecurityHeaders(utils.getCSPNonce(), req, res);
+		HttpUtils.getDefaultAvatarImage(res);
 	}
 }

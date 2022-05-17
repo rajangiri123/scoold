@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,13 +19,17 @@ package com.erudika.scoold.controllers;
 
 import com.erudika.para.core.Sysprop;
 import com.erudika.para.core.User;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Utils;
-import static com.erudika.scoold.ScooldServer.MAX_FAV_TAGS;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Utils;
+import static com.erudika.scoold.ScooldServer.SETTINGSLINK;
+import static com.erudika.scoold.ScooldServer.SIGNINLINK;
 import com.erudika.scoold.core.Profile;
 import com.erudika.scoold.utils.ScooldUtils;
+import com.erudika.scoold.utils.avatars.AvatarRepository;
+import com.erudika.scoold.utils.avatars.AvatarRepositoryProxy;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -37,9 +41,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import static com.erudika.scoold.ScooldServer.SIGNINLINK;
-import static com.erudika.scoold.ScooldServer.SETTINGSLINK;
-import java.util.List;
 
 /**
  *
@@ -50,10 +51,12 @@ import java.util.List;
 public class SettingsController {
 
 	private final ScooldUtils utils;
+	private final AvatarRepository avatarRepository;
 
 	@Inject
-	public SettingsController(ScooldUtils utils) {
+	public SettingsController(ScooldUtils utils, AvatarRepositoryProxy avatarRepository) {
 		this.utils = utils;
+		this.avatarRepository = avatarRepository;
 	}
 
 	@GetMapping
@@ -64,6 +67,11 @@ public class SettingsController {
 		model.addAttribute("path", "settings.vm");
 		model.addAttribute("title", utils.getLang(req).get("settings.title"));
 		model.addAttribute("newpostEmailsEnabled", utils.isSubscribedToNewPosts(req));
+		model.addAttribute("emailsAllowed", utils.isNotificationsAllowed());
+		model.addAttribute("newpostEmailsAllowed", utils.isNewPostNotificationAllowed());
+		model.addAttribute("favtagsEmailsAllowed", utils.isFavTagsNotificationAllowed());
+		model.addAttribute("replyEmailsAllowed", utils.isReplyNotificationAllowed());
+		model.addAttribute("commentEmailsAllowed", utils.isCommentNotificationAllowed());
 		model.addAttribute("includeGMapsScripts", utils.isNearMeFeatureEnabled());
 		return "base";
 	}
@@ -83,18 +91,19 @@ public class SettingsController {
 			}
 			setAnonymity(authUser, req.getParameter("anon"));
 			setDarkMode(authUser, req.getParameter("dark"));
-			authUser.setReplyEmailsEnabled(Boolean.valueOf(replyEmailsOn));
-			authUser.setCommentEmailsEnabled(Boolean.valueOf(commentEmailsOn));
-			authUser.setFavtagsEmailsEnabled(Boolean.valueOf(favtagsEmailsOn));
+			authUser.setReplyEmailsEnabled(Boolean.valueOf(replyEmailsOn) && utils.isReplyNotificationAllowed());
+			authUser.setCommentEmailsEnabled(Boolean.valueOf(commentEmailsOn) && utils.isCommentNotificationAllowed());
+			authUser.setFavtagsEmailsEnabled(Boolean.valueOf(favtagsEmailsOn) && utils.isFavTagsNotificationAllowed());
 			authUser.update();
 
-			if (Boolean.valueOf(newpostEmailsOn)) {
+			if (Boolean.valueOf(newpostEmailsOn) && utils.isNewPostNotificationAllowed()) {
 				utils.subscribeToNewPosts(authUser.getUser());
 			} else {
 				utils.unsubscribeFromNewPosts(authUser.getUser());
 			}
 
 			if (resetPasswordAndUpdate(authUser.getUser(), oldpassword, newpassword)) {
+				utils.clearSession(req, res);
 				return "redirect:" + SETTINGSLINK + "?passChanged=true";
 			}
 		}
@@ -107,7 +116,7 @@ public class SettingsController {
 			utils.getAuthUser(req).delete();
 			utils.clearSession(req, res);
 		}
-		return "redirect:" + Config.getConfigParam("signout_url", SIGNINLINK + "?code=4&success=true");
+		return "redirect:" + ScooldUtils.getConfig().signoutUrl(4);
 	}
 
 	private boolean resetPasswordAndUpdate(User u, String pass, String newpass) {
@@ -129,7 +138,7 @@ public class SettingsController {
 		if (!StringUtils.isBlank(tags)) {
 			Set<String> ts = new LinkedHashSet<String>();
 			for (String tag : tags.split(",")) {
-				if (!StringUtils.isBlank(tag) && ts.size() <= MAX_FAV_TAGS) {
+				if (!StringUtils.isBlank(tag) && ts.size() <= ScooldUtils.getConfig().maxFavoriteTags()) {
 					ts.add(tag);
 				}
 			}
@@ -171,7 +180,7 @@ public class SettingsController {
 	private void anonymizeProfile(Profile authUser) {
 		authUser.setName("Anonymous");
 		authUser.setOriginalPicture(authUser.getPicture());
-		authUser.setPicture(utils.getGravatar(authUser.getId() + "@scooldemail.com"));
+		authUser.setPicture(avatarRepository.getAnonymizedLink(authUser.getId() + "@scooldemail.com"));
 		authUser.setAnonymityEnabled(true);
 	}
 

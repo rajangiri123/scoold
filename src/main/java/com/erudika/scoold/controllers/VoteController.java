@@ -1,7 +1,7 @@
 package com.erudika.scoold.controllers;
 
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,17 +22,7 @@ import com.erudika.para.client.ParaClient;
 import com.erudika.para.core.ParaObject;
 import com.erudika.para.core.Votable;
 import com.erudika.para.core.Vote;
-import com.erudika.para.utils.Config;
-import static com.erudika.scoold.ScooldServer.ANSWER_VOTEUP_REWARD_AUTHOR;
-import static com.erudika.scoold.ScooldServer.CRITIC_IFHAS;
-import static com.erudika.scoold.ScooldServer.GOODANSWER_IFHAS;
-import static com.erudika.scoold.ScooldServer.GOODQUESTION_IFHAS;
-import static com.erudika.scoold.ScooldServer.POST_VOTEDOWN_PENALTY_AUTHOR;
-import static com.erudika.scoold.ScooldServer.POST_VOTEDOWN_PENALTY_VOTER;
-import static com.erudika.scoold.ScooldServer.QUESTION_VOTEUP_REWARD_AUTHOR;
-import static com.erudika.scoold.ScooldServer.SUPPORTER_IFHAS;
-import static com.erudika.scoold.ScooldServer.VOTER_IFHAS;
-import static com.erudika.scoold.ScooldServer.VOTEUP_REWARD_AUTHOR;
+import com.erudika.scoold.ScooldConfig;
 import com.erudika.scoold.core.Comment;
 import com.erudika.scoold.core.Post;
 import com.erudika.scoold.core.Profile;
@@ -48,12 +38,11 @@ import java.util.List;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 /**
@@ -64,11 +53,10 @@ import org.springframework.web.bind.annotation.ResponseBody;
 public class VoteController {
 
 	private static final Logger logger = LoggerFactory.getLogger(VoteController.class);
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 
 	private final ScooldUtils utils;
 	private final ParaClient pc;
-	private final String expiresAfter;
-	private final String lockedAfter;
 	private final Integer expiresAfterSec;
 	private final Integer lockedAfterSec;
 
@@ -76,14 +64,12 @@ public class VoteController {
 	public VoteController(ScooldUtils utils) {
 		this.utils = utils;
 		this.pc = utils.getParaClient();
-		expiresAfter = Config.getConfigParam("vote_expires_after_sec", null);
-		lockedAfter = Config.getConfigParam("vote_locked_after_sec", null);
-		expiresAfterSec = NumberUtils.toInt(expiresAfter, Config.VOTE_EXPIRES_AFTER_SEC);
-		lockedAfterSec = NumberUtils.toInt(lockedAfter, Config.VOTE_LOCKED_AFTER_SEC);
+		expiresAfterSec = CONF.voteExpiresAfterSec();
+		lockedAfterSec = CONF.voteLockedAfterSec();
 	}
 
 	@ResponseBody
-	@GetMapping("/voteup/{type}/{id}")
+	@PostMapping("/voteup/{type}/{id}")
 	public Boolean voteup(@PathVariable String type, @PathVariable String id, HttpServletRequest req) {
 		//addModel("voteresult", result);
 		ParaObject votable = StringUtils.isBlank(type) ? pc.read(id) : pc.read(type, id);
@@ -91,7 +77,7 @@ public class VoteController {
 	}
 
 	@ResponseBody
-	@GetMapping("/votedown/{type}/{id}")
+	@PostMapping("/votedown/{type}/{id}")
 	public Boolean votedown(@PathVariable String type, @PathVariable String id, HttpServletRequest req) {
 		//addModel("voteresult", result);
 		ParaObject votable = StringUtils.isBlank(type) ? pc.read(id) : pc.read(type, id);
@@ -132,9 +118,9 @@ public class VoteController {
 			logger.error(null, ex);
 			result = false;
 		}
-		utils.addBadgeOnce(authUser, SUPPORTER, authUser.getUpvotes() >= SUPPORTER_IFHAS);
-		utils.addBadgeOnce(authUser, CRITIC, authUser.getDownvotes() >= CRITIC_IFHAS);
-		utils.addBadgeOnce(authUser, VOTER, authUser.getTotalVotes() >= VOTER_IFHAS);
+		utils.addBadgeOnce(authUser, SUPPORTER, authUser.getUpvotes() >= CONF.supporterIfHasRep());
+		utils.addBadgeOnce(authUser, CRITIC, authUser.getDownvotes() >= CONF.criticIfHasRep());
+		utils.addBadgeOnce(authUser, VOTER, authUser.getTotalVotes() >= CONF.voterIfHasRep());
 
 		if (update) {
 			pc.updateAll(Arrays.asList(author, authUser));
@@ -162,9 +148,9 @@ public class VoteController {
 			} else {
 				authUser.incrementDownvotes();
 			}
-			author.removeRep(POST_VOTEDOWN_PENALTY_AUTHOR);
+			author.removeRep(CONF.postVotedownPenaltyAuthor());
 			//small penalty to voter
-			authUser.removeRep(POST_VOTEDOWN_PENALTY_VOTER);
+			authUser.removeRep(CONF.postVotedownPenaltyVoter());
 			return true;
 		}
 		return false;
@@ -175,16 +161,16 @@ public class VoteController {
 		if (votable instanceof Post) {
 			Post p = (Post) votable;
 			if (p.isReply()) {
-				utils.addBadge(author, GOODANSWER, votes >= GOODANSWER_IFHAS, false);
-				reward = ANSWER_VOTEUP_REWARD_AUTHOR;
+				utils.addBadge(author, GOODANSWER, votes >= CONF.goodAnswerIfHasRep(), false);
+				reward = CONF.answerVoteupRewardAuthor();
 			} else if (p.isQuestion()) {
-				utils.addBadge(author, GOODQUESTION, votes >= GOODQUESTION_IFHAS, false);
-				reward = QUESTION_VOTEUP_REWARD_AUTHOR;
+				utils.addBadge(author, GOODQUESTION, votes >= CONF.goodQuestionIfHasRep(), false);
+				reward = CONF.questionVoteupRewardAuthor();
 			} else {
-				reward = VOTEUP_REWARD_AUTHOR;
+				reward = CONF.voteupRewardAuthor();
 			}
 		} else {
-			reward = VOTEUP_REWARD_AUTHOR;
+			reward = CONF.voteupRewardAuthor();
 		}
 		return reward;
 	}
@@ -207,16 +193,10 @@ public class VoteController {
 	}
 
 	private boolean voteUp(ParaObject votable, String userid) {
-		if (StringUtils.isBlank(expiresAfter) && StringUtils.isBlank(lockedAfter)) {
-			return pc.voteUp(votable, userid);
-		}
 		return pc.voteUp(votable, userid, expiresAfterSec, lockedAfterSec);
 	}
 
 	private boolean voteDown(ParaObject votable, String userid) {
-		if (StringUtils.isBlank(expiresAfter) && StringUtils.isBlank(lockedAfter)) {
-			return pc.voteDown(votable, userid);
-		}
 		return pc.voteDown(votable, userid, expiresAfterSec, lockedAfterSec);
 	}
 }

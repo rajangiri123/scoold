@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,20 +18,19 @@
 package com.erudika.scoold.controllers;
 
 import com.erudika.para.client.ParaClient;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
-import com.erudika.scoold.ScooldServer;
-import static com.erudika.scoold.ScooldServer.CONTEXT_PATH;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.scoold.ScooldConfig;
 import static com.erudika.scoold.ScooldServer.SEARCHLINK;
 import static com.erudika.scoold.ScooldServer.SIGNINLINK;
 import com.erudika.scoold.core.Comment;
 import com.erudika.scoold.core.Feedback;
 import com.erudika.scoold.core.Post;
 import com.erudika.scoold.core.Profile;
-import com.erudika.scoold.core.Question;
 import com.erudika.scoold.core.Reply;
 import com.erudika.scoold.utils.ScooldUtils;
+import com.redfin.sitemapgenerator.WebSitemapGenerator;
+import com.redfin.sitemapgenerator.WebSitemapUrl;
 import com.sun.syndication.feed.synd.SyndContent;
 import com.sun.syndication.feed.synd.SyndContentImpl;
 import com.sun.syndication.feed.synd.SyndEntry;
@@ -41,10 +40,7 @@ import com.sun.syndication.feed.synd.SyndFeedImpl;
 import com.sun.syndication.io.FeedException;
 import com.sun.syndication.io.SyndFeedOutput;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -69,6 +65,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 public class SearchController {
 
 	private static final Logger logger = LoggerFactory.getLogger(SearchController.class);
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 
 	private final ScooldUtils utils;
 	private final ParaClient pc;
@@ -96,22 +93,22 @@ public class SearchController {
 		String qs = utils.sanitizeQueryString(queryString, req);
 
 		if ("questions".equals(type)) {
-			questionslist = pc.findQuery(Utils.type(Question.class), qs, itemcount);
+			questionslist = utils.fullQuestionsSearch(qs, itemcount);
 		} else if ("answers".equals(type)) {
 			answerslist = pc.findQuery(Utils.type(Reply.class), qs, itemcount);
 		} else if ("feedback".equals(type) && utils.isFeedbackEnabled()) {
 			feedbacklist = pc.findQuery(Utils.type(Feedback.class), queryString, itemcount);
 		} else if ("people".equals(type)) {
-			userlist = pc.findQuery(Utils.type(Profile.class), getUsersSearchQuery(qs, req), itemcount);
+			userlist = pc.findQuery(Utils.type(Profile.class), getUsersSearchQuery(queryString, req), itemcount);
 		} else if ("comments".equals(type)) {
 			commentslist = pc.findQuery(Utils.type(Comment.class), qs, itemcount);
 		} else {
-			questionslist = pc.findQuery(Utils.type(Question.class), qs);
+			questionslist = utils.fullQuestionsSearch(qs);
 			answerslist = pc.findQuery(Utils.type(Reply.class), qs);
 			if (utils.isFeedbackEnabled()) {
 				feedbacklist = pc.findQuery(Utils.type(Feedback.class), queryString);
 			}
-			userlist = pc.findQuery(Utils.type(Profile.class), getUsersSearchQuery(qs, req));
+			userlist = pc.findQuery(Utils.type(Profile.class), getUsersSearchQuery(queryString, req));
 			commentslist = pc.findQuery(Utils.type(Comment.class), qs, itemcount);
 		}
 		ArrayList<Post> list = new ArrayList<Post>();
@@ -137,29 +134,21 @@ public class SearchController {
 
 	private String getUsersSearchQuery(String qs, HttpServletRequest req) {
 		String spaceFilter = utils.sanitizeQueryString("", req).replaceAll("properties\\.space:", "properties.spaces:");
-		if (!StringUtils.isBlank(qs)) {
-			String template = "(name:({1}) OR name:({2}) OR properties.location:({0}) OR "
-					+ "properties.aboutme:({0}) OR properties.groups:({0}))";
-			qs = (StringUtils.isBlank(spaceFilter) ? "" : spaceFilter + " AND ") +
-					Utils.formatMessage(template, qs, StringUtils.capitalize(qs),
-							qs.matches("[\\p{IsAlphabetic}]*") ? qs + "*" : qs);
-		} else {
-			qs = StringUtils.isBlank(spaceFilter) ? "*" : spaceFilter;
-		}
-		return qs;
+		return utils.getUsersSearchQuery(qs, spaceFilter);
 	}
 
 	@ResponseBody
 	@GetMapping("/opensearch.xml")
-	public ResponseEntity<String> openSearch() {
+	public ResponseEntity<String> openSearch(HttpServletRequest req) {
 		String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n"
 				+ "<OpenSearchDescription xmlns=\"http://a9.com/-/spec/opensearch/1.1/\" "
 				+ "  xmlns:moz=\"http://www.mozilla.org/2006/browser/search/\">\n"
-				+ "  <ShortName>" + Config.APP_NAME + "</ShortName>\n"
-				+ "  <Description>Search for questions and answers</Description>\n"
+				+ "  <ShortName>" + CONF.appName() + "</ShortName>\n"
+				+ "  <Description>" + utils.getLang(req).get("search.description") + "</Description>\n"
 				+ "  <InputEncoding>UTF-8</InputEncoding>\n"
-				+ "  <Image width=\"16\" height=\"16\" type=\"image/x-icon\">https://scoold.com/favicon.ico</Image>\n"
-				+ "  <Url type=\"text/html\" method=\"get\" template=\"" + ScooldServer.getServerURL() + CONTEXT_PATH
+				+ "  <Image width=\"16\" height=\"16\" type=\"image/x-icon\">" +
+				CONF.serverUrl() + CONF.serverContextPath() + "/favicon.ico</Image>\n"
+				+ "  <Url type=\"text/html\" method=\"get\" template=\"" + CONF.serverUrl() + CONF.serverContextPath()
 				+ "/search?q={searchTerms}\"></Url>\n"
 				+ "</OpenSearchDescription>";
 		return ResponseEntity.ok().
@@ -170,11 +159,47 @@ public class SearchController {
 	}
 
 	@ResponseBody
+	@GetMapping("/manifest.webmanifest")
+	public ResponseEntity<String> webmanifest(HttpServletRequest req) {
+		String json = "{\n"
+				+ "    \"theme_color\": \"#03a9f4\",\n"
+				+ "    \"background_color\": \"#FFFFFF\",\n"
+				+ "    \"display\": \"minimal-ui\",\n"
+				+ "    \"scope\": \"/\",\n"
+				+ "    \"start_url\": \"" + CONF.serverContextPath() + "/\",\n"
+				+ "    \"name\": \"" + CONF.appName() + "\",\n"
+				+ "    \"description\": \"" + CONF.metaDescription() + "\",\n"
+				+ "    \"short_name\": \"" + CONF.appName() + "\",\n"
+				+ "    \"icons\": [\n"
+				+ "        {\n"
+				+ "            \"src\": \"" + CONF.logoUrl() + "\",\n"
+				+ "            \"sizes\": \"any\",\n"
+				+ "            \"type\": \"image/svg-xml\"\n"
+				+ "        },{\n"
+				+ "            \"src\": \"" + CONF.imagesLink() + "/maskable512.png\",\n"
+				+ "            \"sizes\": \"512x512\",\n"
+				+ "            \"purpose\": \"maskable\",\n"
+				+ "            \"type\": \"image/png\"\n"
+				+ "        },{\n"
+				+ "            \"src\": \"" + CONF.metaAppIconUrl() + "\",\n"
+				+ "            \"sizes\": \"any\",\n"
+				+ "            \"type\": \"image/png\"\n"
+				+ "        }\n"
+				+ "    ]\n"
+				+ "}";
+		return ResponseEntity.ok().
+				contentType(MediaType.APPLICATION_JSON).
+				cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS)).
+				eTag(Utils.md5(json)).
+				body(json);
+	}
+
+	@ResponseBody
 	@GetMapping("/feed.xml")
-	public ResponseEntity<String> feed() {
+	public ResponseEntity<String> feed(HttpServletRequest req) {
 		String feed = "";
 		try {
-			feed = new SyndFeedOutput().outputString(getFeed());
+			feed = new SyndFeedOutput().outputString(getFeed(req));
 		} catch (Exception ex) {
 			logger.error("Could not generate feed", ex);
 		}
@@ -185,17 +210,20 @@ public class SearchController {
 				body(feed);
 	}
 
-	private SyndFeed getFeed() throws IOException, FeedException {
-		List<Post> questions = pc.findQuery(Utils.type(Question.class), "*");
+	private SyndFeed getFeed(HttpServletRequest req) throws IOException, FeedException {
+		boolean canList = utils.isDefaultSpacePublic() || utils.isAuthenticated(req);
+		List<Post> questions = canList ? utils.fullQuestionsSearch("*") : Collections.emptyList();
 		List<SyndEntry> entries = new ArrayList<SyndEntry>();
-		String baseurl = ScooldServer.getServerURL();
+		String baseurl = CONF.serverUrl();
 		baseurl = baseurl.endsWith("/") ? baseurl : baseurl + "/";
+
+		Map<String, String> lang = utils.getLang(req);
 
 		SyndFeed feed = new SyndFeedImpl();
 		feed.setFeedType("atom_1.0");
-		feed.setTitle(Config.APP_NAME + " - Recent questions");
+		feed.setTitle(Utils.formatMessage(lang.get("feed.title"), CONF.appName()));
 		feed.setLink(baseurl);
-		feed.setDescription("A summary of the most recent questions on " + Config.APP_NAME);
+		feed.setDescription(Utils.formatMessage(lang.get("feed.description"), CONF.appName()));
 
 		for (Post post : questions) {
 			SyndEntry entry;
@@ -219,5 +247,38 @@ public class SearchController {
 		}
 		feed.setEntries(entries);
 		return feed;
+	}
+
+	@ResponseBody
+	@GetMapping("/sitemap.xml")
+	public ResponseEntity<String> sitemap(HttpServletRequest req) {
+		if (!CONF.sitemapEnabled()) {
+			return ResponseEntity.notFound().build();
+		}
+		String sitemap = "";
+		try {
+			sitemap = getSitemap(req);
+		} catch (Exception ex) {
+			logger.error("Could not generate sitemap", ex);
+		}
+		return ResponseEntity.ok().
+				contentType(MediaType.APPLICATION_XML).
+				cacheControl(CacheControl.maxAge(3, TimeUnit.HOURS)).
+				eTag(Utils.md5(sitemap)).
+				body(sitemap);
+	}
+
+	private String getSitemap(HttpServletRequest req) throws IOException, FeedException {
+		boolean canList = utils.isDefaultSpacePublic() || utils.isAuthenticated(req);
+		List<Post> questions = canList ? utils.fullQuestionsSearch("*") : Collections.emptyList();
+		if (!questions.isEmpty()) {
+			WebSitemapGenerator generator = new WebSitemapGenerator(CONF.serverUrl());
+			for (Post post : questions) {
+				String baselink = CONF.serverUrl().concat(post.getPostLink(false, false));
+				generator.addUrl(new WebSitemapUrl.Options(baselink).lastMod(new Date(post.getTimestamp())).build());
+			}
+			return generator.writeAsStrings().get(0);
+		}
+		return "<_/>";
 	}
 }

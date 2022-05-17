@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@
  * For issues and patches go to: https://github.com/erudika
  */
 package com.erudika.scoold.core;
-
-import com.erudika.para.annotations.Stored;
 import com.erudika.para.client.ParaClient;
 import com.erudika.para.core.Sysprop;
 import com.erudika.para.core.User;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
+import com.erudika.para.core.annotations.Stored;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Para;
+import com.erudika.para.core.utils.Utils;
 import com.erudika.scoold.utils.ScooldUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.Instant;
@@ -144,16 +144,16 @@ public class Profile extends Sysprop {
 		this.weeklyVotes = 0;
 		this.anonymityEnabled = false;
 		this.darkmodeEnabled = false;
-		this.favtagsEmailsEnabled = false;
-		this.replyEmailsEnabled = Config.getConfigBoolean("reply_emails_enabled", false);
-		this.commentEmailsEnabled = Config.getConfigBoolean("comment_emails_enabled", false);
+		this.favtagsEmailsEnabled = ScooldUtils.getConfig().favoriteTagsEmailsEnabled();
+		this.replyEmailsEnabled = ScooldUtils.getConfig().replyEmailsEnabled();
+		this.commentEmailsEnabled = ScooldUtils.getConfig().commentEmailsEnabled();
 	}
 
 	public static final String id(String userid) {
-		if (StringUtils.endsWith(userid, Config.SEPARATOR + "profile")) {
+		if (StringUtils.endsWith(userid, Para.getConfig().separator() + "profile")) {
 			return userid;
 		} else {
-			return userid != null ? userid + Config.SEPARATOR + "profile" : null;
+			return userid != null ? userid + Para.getConfig().separator() + "profile" : null;
 		}
 	}
 
@@ -168,16 +168,17 @@ public class Profile extends Sysprop {
 		p.setGroups(ScooldUtils.getInstance().isRecognizedAsAdmin(u)
 				? User.Groups.ADMINS.toString() : u.getGroups());
 		// auto-assign spaces to new users
-		String space = StringUtils.substringBefore(Config.getConfigParam("auto_assign_spaces", ""), ",");
+		String space = StringUtils.substringBefore(ScooldUtils.getConfig().autoAssignSpaces(), ",");
 		if (!StringUtils.isBlank(space) && !ScooldUtils.getInstance().isDefaultSpace(space)) {
 			Sysprop s = client().read(ScooldUtils.getInstance().getSpaceId(space));
-			if (s != null) {
-				if (Config.getConfigBoolean("reset_spaces_on_new_assignment",
-						u.isOAuth2User() || u.isLDAPUser() || u.isSAMLUser())) {
-					p.setSpaces(Collections.singleton(s.getId() + Config.SEPARATOR + s.getName()));
-				} else {
-					p.getSpaces().add(s.getId() + Config.SEPARATOR + s.getName());
-				}
+			if (s == null) {
+				s = ScooldUtils.getInstance().buildSpaceObject(space);
+				client().create(s); // create the space it it's missing
+			}
+			if (ScooldUtils.getConfig().resetSpacesOnNewAssignment(u.isOAuth2User() || u.isLDAPUser() || u.isSAMLUser())) {
+				p.setSpaces(Collections.singleton(s.getId() + Para.getConfig().separator() + s.getName()));
+			} else {
+				p.getSpaces().add(s.getId() + Para.getConfig().separator() + s.getName());
 			}
 		}
 		return p;
@@ -191,7 +192,7 @@ public class Profile extends Sysprop {
 	public User getUser() {
 		if (user == null) {
 			user = client().read(getCreatorid() == null
-					? StringUtils.removeEnd(getId(), Config.SEPARATOR + "profile") : getCreatorid());
+					? StringUtils.removeEnd(getId(), Para.getConfig().separator() + "profile") : getCreatorid());
 		}
 		return user;
 	}
@@ -341,7 +342,7 @@ public class Profile extends Sysprop {
 	public Set<String> getSpaces() {
 		if (ScooldUtils.getInstance().isMod(this)) {
 			spaces = ScooldUtils.getInstance().getAllSpaces().stream().
-					map(s -> s.getId() + Config.SEPARATOR + s.getName()).collect(Collectors.toSet());
+					map(s -> s.getId() + Para.getConfig().separator() + s.getName()).collect(Collectors.toSet());
 		}
 		if (spaces == null) {
 			spaces = new LinkedHashSet<String>();
@@ -442,7 +443,7 @@ public class Profile extends Sysprop {
 	}
 
 	public void setOriginalName(String originalName) {
-		this.originalName = originalName;
+		this.originalName = StringUtils.abbreviate(originalName, 256);
 	}
 
 	public String getOriginalPicture() {
@@ -509,7 +510,7 @@ public class Profile extends Sysprop {
 		String sid = ScooldUtils.getInstance().getSpaceId(space);
 		Iterator<String> it = getSpaces().iterator();
 		while (it.hasNext()) {
-			if (it.next().startsWith(sid + Config.SEPARATOR)) {
+			if (it.next().startsWith(sid + Para.getConfig().separator())) {
 				it.remove();
 			}
 		}

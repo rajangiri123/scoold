@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,40 +21,42 @@ import com.erudika.para.client.ParaClient;
 import com.erudika.para.core.Address;
 import com.erudika.para.core.Sysprop;
 import com.erudika.para.core.Tag;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Para;
 import com.erudika.para.core.utils.ParaObjectUtils;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.scoold.ScooldConfig;
+import static com.erudika.scoold.ScooldServer.QUESTIONSLINK;
+import static com.erudika.scoold.ScooldServer.SIGNINLINK;
 import com.erudika.scoold.core.Post;
 import com.erudika.scoold.core.Profile;
 import com.erudika.scoold.core.Question;
+import com.erudika.scoold.core.UnapprovedQuestion;
+import com.erudika.scoold.utils.HttpUtils;
 import com.erudika.scoold.utils.ScooldUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import static com.erudika.scoold.ScooldServer.SIGNINLINK;
-import static com.erudika.scoold.ScooldServer.QUESTIONSLINK;
-import com.erudika.scoold.core.UnapprovedQuestion;
-import com.erudika.scoold.utils.HttpUtils;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.springframework.web.util.HtmlUtils;
 
 /**
@@ -63,6 +65,8 @@ import org.springframework.web.util.HtmlUtils;
  */
 @Controller
 public class QuestionsController {
+
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 
 	private final ScooldUtils utils;
 	private final ParaClient pc;
@@ -123,7 +127,7 @@ public class QuestionsController {
 			res.setStatus(401);
 			return;
 		}
-		Pager pager = new Pager(1, "votes", true, Config.getConfigInt("max_similar_posts", 7));
+		Pager pager = new Pager(1, "votes", true, CONF.maxSimilarPosts());
 		Profile authUser = utils.getAuthUser(req);
 		StringBuilder sb = new StringBuilder();
 		Question q = new Question();
@@ -167,14 +171,15 @@ public class QuestionsController {
 		} else {
 			Pager p = utils.pagerFromParams(req);
 			if (!StringUtils.isBlank(req.getParameter(Config._TAGS))) {
-				p.setName("with_tags:" + req.getParameter(Config._TAGS));
+				boolean matchAll = "true".equals(req.getParameter("matchAllTags"));
+				p.setName("with_tags:" + (matchAll ? "+" : "") + req.getParameter(Config._TAGS));
 			}
 			savePagerToCookie(req, res, p);
 			HttpUtils.setRawCookie("questions-view-compact", compactViewEnabled,
-					req, res, false, (int) TimeUnit.DAYS.toSeconds(365));
+					req, res, false, "Strict", (int) TimeUnit.DAYS.toSeconds(365));
 		}
 		return "redirect:" + QUESTIONSLINK + (StringUtils.isBlank(sortby) ? "" : "?sortby="
-				+ Optional.ofNullable(StringUtils.trimToNull(tab)).orElse(sortby));
+				+ Optional.ofNullable(StringUtils.trimToNull(sortby)).orElse(tab));
 	}
 
 	@GetMapping("/questions/ask")
@@ -184,10 +189,9 @@ public class QuestionsController {
 		}
 		model.addAttribute("path", "questions.vm");
 		model.addAttribute("askSelected", "navbtn-hover");
-		model.addAttribute("defaultTag", Config.getConfigParam("default_question_tag", ""));
+		model.addAttribute("defaultTag", CONF.defaultQuestionTag());
 		model.addAttribute("includeGMapsScripts", utils.isNearMeFeatureEnabled());
-		model.addAttribute("title", utils.getLang(req).get("questions.title") + " - "
-				+ utils.getLang(req).get("posts.ask"));
+		model.addAttribute("title", utils.getLang(req).get("posts.ask"));
 		return "base";
 	}
 
@@ -204,16 +208,16 @@ public class QuestionsController {
 			q.setCreatorid(authUser.getId());
 			q.setSpace(currentSpace);
 			if (StringUtils.isBlank(q.getTagsString())) {
-				q.setTags(Arrays.asList(Config.getConfigParam("default_question_tag", "question")));
+				q.setTags(Arrays.asList(CONF.defaultQuestionTag().isBlank() ? "question" : CONF.defaultQuestionTag()));
 			}
 			Map<String, String> error = utils.validate(q);
 			if (error.isEmpty()) {
 				q.setLocation(location);
 				q.setAuthor(authUser);
 				String qid = q.create();
-				utils.sendNewPostNotifications(q);
+				utils.sendNewPostNotifications(q, req);
 				if (!StringUtils.isBlank(latlng)) {
-					Address addr = new Address(qid + Config.SEPARATOR + Utils.type(Address.class));
+					Address addr = new Address(qid + Para.getConfig().separator() + Utils.type(Address.class));
 					addr.setAddress(address);
 					addr.setCountry(location);
 					addr.setLatlng(latlng);
@@ -266,17 +270,17 @@ public class QuestionsController {
 				}
 			}
 			if (spaceObj != null) {
-				space = spaceObj.getId().concat(Config.SEPARATOR).concat(spaceObj.getName());
+				space = spaceObj.getId().concat(Para.getConfig().separator()).concat(spaceObj.getName());
 			} else {
 				space = Post.DEFAULT_SPACE;
 			}
 		}
 		utils.storeSpaceIdInCookie(space, req, res);
-		String backTo = req.getParameter("returnto");
+		String backTo = HttpUtils.getBackToUrl(req);
 		if (StringUtils.isBlank(backTo)) {
 			return get(req.getParameter("sortby"), req, model);
 		} else {
-			return "redirect:" + (StringUtils.isBlank(backTo) ? QUESTIONSLINK : backTo);
+			return "redirect:" + backTo;
 		}
 	}
 
@@ -345,6 +349,11 @@ public class QuestionsController {
 			p.setSortby("properties.lastactivity");
 		} else if ("votes".equals(sortby)) {
 			p.setSortby("votes");
+		} else if ("answered".equals(sortby)) {
+			p.setSortby("timestamp");
+			String q = "properties.answerid:[* TO *]";
+			query = utils.getSpaceFilteredQuery(req, spaceFiltered,
+					utils.getSpaceFilter(authUser, currentSpace) + " AND " + q, q);
 		} else if ("unanswered".equals(sortby)) {
 			p.setSortby("timestamp");
 			if ("default_pager".equals(p.getName()) && p.isDesc()) {
@@ -364,9 +373,11 @@ public class QuestionsController {
 		}
 		String tags = StringUtils.trimToEmpty(StringUtils.removeStart(p.getName(), "with_tags:"));
 		if (StringUtils.startsWith(p.getName(), "with_tags:") && !StringUtils.isBlank(tags)) {
+			String logicalOperator = tags.startsWith("+") ? " AND " : " OR ";
+			tags = StringUtils.remove(tags, "+");
 			StringBuilder sb = new StringBuilder("*".equals(query) ? "" : query.concat(" AND "));
 			// should we specify the tags property here? like: tags:(tag1 OR tag2)
-			sb.append("tags").append(":(").append(tags.replaceAll(",", " OR ")).append(")");
+			sb.append("tags").append(":(").append(tags.replaceAll(",", logicalOperator)).append(")");
 			query = sb.toString();
 		}
 		return query;
@@ -389,7 +400,7 @@ public class QuestionsController {
 			pager.setCount(0);
 			return pager;
 		} catch (JsonProcessingException ex) {
-			return Optional.ofNullable(defaultPager).orElse(new Pager() {
+			return Optional.ofNullable(defaultPager).orElse(new Pager(CONF.maxItemsPerPage()) {
 				public String getName() {
 					return "default_pager";
 				}
@@ -400,7 +411,7 @@ public class QuestionsController {
 	private void savePagerToCookie(HttpServletRequest req, HttpServletResponse res, Pager p) {
 		try {
 			HttpUtils.setRawCookie("questions-filter", Utils.base64enc(ParaObjectUtils.getJsonWriterNoIdent().
-					writeValueAsBytes(p)), req, res, false, (int) TimeUnit.DAYS.toSeconds(365));
+					writeValueAsBytes(p)), req, res, false, "Strict", (int) TimeUnit.DAYS.toSeconds(365));
 		} catch (JsonProcessingException ex) { }
 	}
 

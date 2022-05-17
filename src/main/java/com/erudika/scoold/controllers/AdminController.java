@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,10 +24,12 @@ import com.erudika.para.core.Sysprop;
 import com.erudika.para.core.Tag;
 import com.erudika.para.core.User;
 import com.erudika.para.core.Webhook;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Para;
 import com.erudika.para.core.utils.ParaObjectUtils;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.scoold.ScooldConfig;
 import static com.erudika.scoold.ScooldServer.ADMINLINK;
 import static com.erudika.scoold.ScooldServer.HOMEPAGE;
 import static com.erudika.scoold.ScooldServer.SIGNINLINK;
@@ -37,23 +39,16 @@ import com.erudika.scoold.core.Profile;
 import com.erudika.scoold.core.Question;
 import com.erudika.scoold.core.Reply;
 import com.erudika.scoold.utils.ScooldUtils;
-import com.typesafe.config.ConfigValue;
-import java.util.Map;
-import javax.inject.Inject;
-import javax.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import com.erudika.scoold.utils.Version;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.nimbusds.jwt.SignedJWT;
+import com.typesafe.config.ConfigValue;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -67,6 +62,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -75,13 +71,22 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.ws.rs.client.Entity;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -95,7 +100,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 public class AdminController {
 
 	private static final Logger logger = LoggerFactory.getLogger(AdminController.class);
-	private final String scooldVersion = getClass().getPackage().getImplementationVersion();
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 	private static final int MAX_SPACES = 10; // Hey! It's cool to edit this, but please consider buying Scoold Pro! :)
 	private final String soDateFormat1 = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
 	private final String soDateFormat2 = "yyyy-MM-dd'T'HH:mm:ss'Z'";
@@ -116,7 +121,7 @@ public class AdminController {
 			return "redirect:" + SIGNINLINK + "?returnto=" + ADMINLINK;
 		}
 		Map<String, Object> configMap = new LinkedHashMap<String, Object>();
-		for (Map.Entry<String, ConfigValue> entry : Config.getConfig().entrySet()) {
+		for (Map.Entry<String, ConfigValue> entry : CONF.getConfig().entrySet()) {
 			ConfigValue value = entry.getValue();
 			configMap.put(entry.getKey(), value != null ? value.unwrapped() : "-");
 		}
@@ -128,8 +133,8 @@ public class AdminController {
 		model.addAttribute("title", utils.getLang(req).get("administration.title"));
 		model.addAttribute("configMap", configMap);
 		model.addAttribute("version", pc.getServerVersion());
-		model.addAttribute("endpoint", Config.getConfigParam("security.redirect_uri", pc.getEndpoint()));
-		model.addAttribute("paraapp", Config.getConfigParam("access_key", "x"));
+		model.addAttribute("endpoint", CONF.redirectUri());
+		model.addAttribute("paraapp", CONF.paraAccessKey());
 		model.addAttribute("spaces", pc.findQuery("scooldspace", "*", itemcount));
 		model.addAttribute("webhooks", pc.findQuery(Utils.type(Webhook.class), "*", itemcount1));
 		model.addAttribute("scooldimports", pc.findQuery("scooldimport", "*", new Pager(7)));
@@ -140,14 +145,14 @@ public class AdminController {
 		model.addAttribute("itemcount", itemcount);
 		model.addAttribute("itemcount1", itemcount1);
 		model.addAttribute("isDefaultSpacePublic", utils.isDefaultSpacePublic());
-		model.addAttribute("scooldVersion", Optional.ofNullable(scooldVersion).orElse("unknown"));
+		model.addAttribute("scooldVersion", Version.getVersion());
+		model.addAttribute("scooldRevision", Version.getRevision());
 		String importedCount = req.getParameter("imported");
 		if (importedCount != null) {
 			if (req.getParameter("success") != null) {
-				model.addAttribute("infoStripMsg", "Successfully imported " + importedCount + " objects from archive.");
+				model.addAttribute("infoStripMsg", "Started a new data import task. ");
 			} else {
-				model.addAttribute("infoStripMsg", "Imported operation failed!" +
-						("0".equals(importedCount) ? "" : " Partially imported " + importedCount + " objects from archive."));
+				model.addAttribute("infoStripMsg", "Data import task failed! The archive was partially imported.");
 			}
 		}
 		Sysprop theme = utils.getCustomTheme();
@@ -172,7 +177,7 @@ public class AdminController {
 				}
 			} else {
 				if (pc.create(spaceObj) != null) {
-					authUser.getSpaces().add(spaceObj.getId() + Config.SEPARATOR + spaceObj.getName());
+					authUser.getSpaces().add(spaceObj.getId() + Para.getConfig().separator() + spaceObj.getName());
 					authUser.update();
 					model.addAttribute("space", spaceObj);
 					utils.getAllSpaces().add(spaceObj);
@@ -209,6 +214,46 @@ public class AdminController {
 		}
 	}
 
+	@PostMapping("/rename-space")
+	public String renameSpace(@RequestParam String space, @RequestParam String newspace,
+			HttpServletRequest req, HttpServletResponse res) {
+		Profile authUser = utils.getAuthUser(req);
+		Sysprop s = pc.read(utils.getSpaceId(space));
+		if (s != null && utils.isAdmin(authUser)) {
+			String origSpace = s.getId() + Para.getConfig().separator() + s.getName();
+			int index = utils.getAllSpaces().indexOf(s);
+			s.setName(newspace);
+			pc.update(s);
+			if (index >= 0) {
+				utils.getAllSpaces().get(index).setName(newspace);
+			}
+			Pager pager = new Pager(1, "_docid", false, CONF.maxItemsPerPage());
+			LinkedList<Map<String, Object>> toUpdate = new LinkedList<>();
+			List<Profile> profiles;
+			do {
+				String query = "properties.spaces:(\"" + origSpace + "\")";
+				profiles = pc.findQuery(Utils.type(Profile.class), query, pager);
+				profiles.stream().forEach(p -> {
+					p.getSpaces().remove(origSpace);
+					p.getSpaces().add(s.getId() + Para.getConfig().separator() + s.getName());
+					Map<String, Object> profile = new HashMap<>();
+					profile.put(Config._ID, p.getId());
+					profile.put("spaces", p.getSpaces());
+					toUpdate.add(profile);
+				});
+				if (!toUpdate.isEmpty()) {
+					pc.invokePatch("_batch", toUpdate, Map.class);
+				}
+			} while (!profiles.isEmpty());
+		}
+		if (utils.isAjaxRequest(req)) {
+			res.setStatus(200);
+			return "space";
+		} else {
+			return "redirect:" + ADMINLINK;
+		}
+	}
+
 	@PostMapping("/create-webhook")
 	public String createWebhook(@RequestParam String targetUrl, @RequestParam(required = false) String type,
 			@RequestParam Boolean json, @RequestParam Set<String> events, HttpServletRequest req, Model model) {
@@ -233,7 +278,7 @@ public class AdminController {
 			model.addAttribute("error", Collections.singletonMap("targetUrl", utils.getLang(req).get("requiredfield")));
 			return "base";
 		}
-		return "redirect:" + ADMINLINK;
+		return "redirect:" + ADMINLINK + "#webhooks-tab";
 	}
 
 	@PostMapping("/toggle-webhook")
@@ -250,7 +295,7 @@ public class AdminController {
 			res.setStatus(200);
 			return "base";
 		} else {
-			return "redirect:" + ADMINLINK;
+			return "redirect:" + ADMINLINK + "#webhooks-tab";
 		}
 	}
 
@@ -266,7 +311,7 @@ public class AdminController {
 			res.setStatus(200);
 			return "base";
 		} else {
-			return "redirect:" + ADMINLINK;
+			return "redirect:" + ADMINLINK + "#webhooks-tab";
 		}
 	}
 
@@ -284,23 +329,25 @@ public class AdminController {
 		return "redirect:" + Optional.ofNullable(req.getParameter("returnto")).orElse(ADMINLINK);
 	}
 
-	@GetMapping(value = "/export", produces = MediaType.APPLICATION_JSON_VALUE)
+	@GetMapping(value = "/export", produces = "application/zip")
 	public ResponseEntity<StreamingResponseBody> backup(HttpServletRequest req, HttpServletResponse response) {
 		Profile authUser = utils.getAuthUser(req);
 		if (!utils.isAdmin(authUser)) {
 			return new ResponseEntity<StreamingResponseBody>(HttpStatus.UNAUTHORIZED);
 		}
-		String fileName = App.identifier(Config.getConfigParam("access_key", "scoold")) + "_" +
-					Utils.formatDate("YYYYMMdd_HHmmss", Locale.US);
+		String fileName = App.identifier(CONF.paraAccessKey()) + "_" + Utils.formatDate("YYYYMMdd_HHmmss", Locale.US);
 		response.setContentType("application/zip");
 		response.setHeader("Content-Disposition", "attachment;filename=" + fileName + ".zip");
 		return new ResponseEntity<StreamingResponseBody>(out -> {
-			ObjectWriter writer = ParaObjectUtils.getJsonWriterNoIdent().without(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
+			// export all fields, even those which are JSON-ignored
+			ObjectWriter writer = JsonMapper.builder().disable(MapperFeature.USE_ANNOTATIONS).build().writer().
+					without(SerializationFeature.INDENT_OUTPUT).
+					without(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
 			try (ZipOutputStream zipOut = new ZipOutputStream(response.getOutputStream())) {
 				long count = 0;
 				int partNum = 0;
 				// find all objects even if there are more than 10000 users in the system
-				Pager pager = new Pager(1, "_docid", false, Config.MAX_ITEMS_PER_PAGE);
+				Pager pager = new Pager(1, "_docid", false, CONF.maxItemsPerPage());
 				List<ParaObject> objects;
 				do {
 					objects = pc.findQuery("", "*", pager);
@@ -327,65 +374,74 @@ public class AdminController {
 			return null;
 		}
 		ObjectReader reader = ParaObjectUtils.getJsonMapper().readerFor(new TypeReference<List<Map<String, Object>>>() { });
-		Map<String, String> comments2authors = new LinkedHashMap<>();
-		int	count = 0;
-		int importBatchSize = Config.getConfigInt("import_batch_size", 100);
 		String filename = file.getOriginalFilename();
 		Sysprop s = new Sysprop();
 		s.setType("scooldimport");
-		try (InputStream inputStream = file.getInputStream()) {
-			if (StringUtils.endsWithIgnoreCase(filename, ".zip")) {
-				try (ZipInputStream zipIn = new ZipInputStream(inputStream)) {
-					ZipEntry zipEntry;
-					List<ParaObject> toCreate = new LinkedList<ParaObject>();
-					while ((zipEntry = zipIn.getNextEntry()) != null) {
-						if (isso) {
-							count += importFromSOArchive(zipIn, zipEntry, reader, comments2authors).size();
-						} else if (zipEntry.getName().endsWith(".json")) {
-							List<Map<String, Object>> objects = reader.readValue(new FilterInputStream(zipIn) {
-								public void close() throws IOException {
-									zipIn.closeEntry();
+		s.setCreatorid(authUser.getCreatorid());
+		s.setName(authUser.getName());
+		s.addProperty("status", "pending");
+		s.addProperty("count", 0);
+		s.addProperty("file", filename);
+		Sysprop si = pc.create(s);
+
+		Para.asyncExecute(() -> {
+			Map<String, String> comments2authors = new LinkedHashMap<>();
+			try (InputStream inputStream = file.getInputStream()) {
+				if (StringUtils.endsWithIgnoreCase(filename, ".zip")) {
+					try (ZipInputStream zipIn = new ZipInputStream(inputStream)) {
+						ZipEntry zipEntry;
+						List<ParaObject> toCreate = new LinkedList<ParaObject>();
+						long countUpdated = Utils.timestamp();
+						while ((zipEntry = zipIn.getNextEntry()) != null) {
+							if (isso) {
+								int imported = importFromSOArchive(zipIn, zipEntry, reader, comments2authors).size();
+								si.addProperty("count", ((int) si.getProperty("count")) + imported);
+							} else if (zipEntry.getName().endsWith(".json")) {
+								List<Map<String, Object>> objects = reader.readValue(new FilterInputStream(zipIn) {
+									public void close() throws IOException {
+										zipIn.closeEntry();
+									}
+								});
+								objects.forEach(o -> toCreate.add(ParaObjectUtils.setAnnotatedFields(o)));
+								if (toCreate.size() >= CONF.importBatchSize()) {
+									pc.createAll(toCreate);
+									toCreate.clear();
 								}
-							});
-							objects.forEach(o -> toCreate.add(ParaObjectUtils.setAnnotatedFields(o)));
-							if (toCreate.size() >= importBatchSize) {
-								pc.createAll(toCreate);
-								toCreate.clear();
+								si.addProperty("count", ((int) si.getProperty("count")) + objects.size());
+							} else {
+								logger.error("Expected JSON but found unknown file type to import: {}", zipEntry.getName());
 							}
-							count += objects.size();
-						} else {
-							logger.error("Expected JSON but found unknown file type to import: {}", zipEntry.getName());
+							if (Utils.timestamp() > countUpdated + TimeUnit.SECONDS.toMillis(5)) {
+								pc.update(si);
+								countUpdated = Utils.timestamp();
+							}
+						}
+						if (!toCreate.isEmpty()) {
+							pc.createAll(toCreate);
+						}
+						if (isso) {
+							updateSOCommentAuthors(comments2authors);
 						}
 					}
-					if (!toCreate.isEmpty()) {
-						pc.createAll(toCreate);
-					}
-					if (isso) {
-						updateSOCommentAuthors(comments2authors);
-					}
+				} else if (StringUtils.endsWithIgnoreCase(filename, ".json")) {
+					List<Map<String, Object>> objects = reader.readValue(inputStream);
+					List<ParaObject> toCreate = new LinkedList<ParaObject>();
+					objects.forEach(o -> toCreate.add(ParaObjectUtils.setAnnotatedFields(o)));
+					si.addProperty("count", objects.size());
+					pc.createAll(toCreate);
 				}
-			} else if (StringUtils.endsWithIgnoreCase(filename, ".json")) {
-				List<Map<String, Object>> objects = reader.readValue(inputStream);
-				List<ParaObject> toCreate = new LinkedList<ParaObject>();
-				objects.forEach(o -> toCreate.add(ParaObjectUtils.setAnnotatedFields(o)));
-				count = objects.size();
-				pc.createAll(toCreate);
+				logger.info("Imported {} objects to {}. Executed by {}", si.getProperty("count"),
+						CONF.paraAccessKey(), authUser.getCreatorid() + " " + authUser.getName());
+				si.addProperty("status", "done");
+			} catch (Exception e) {
+				logger.error("Failed to import " + filename, e);
+				si.addProperty("status", "failed");
+			} finally {
+				pc.update(si);
 			}
-			s.setCreatorid(authUser.getCreatorid());
-			s.setName(authUser.getName());
-			s.addProperty("count", count);
-			s.addProperty("file", filename);
-			logger.info("Imported {} objects to {}. Executed by {}", count,
-					Config.getConfigParam("access_key", "scoold"), authUser.getCreatorid() + " " + authUser.getName());
-
-			if (count > 0) {
-				pc.create(s);
-			}
-		} catch (Exception e) {
-			logger.error("Failed to import " + filename, e);
-			return "redirect:" + ADMINLINK + "?error=true&imported=" + count;
-		}
-		return "redirect:" + ADMINLINK + "?success=true&imported=" + count;
+		});
+		//return "redirect:" + ADMINLINK + "?error=true&imported=" + count;
+		return "redirect:" + ADMINLINK + "?success=true&imported=1#backup-tab";
 	}
 
 	@PostMapping("/set-theme")
@@ -394,7 +450,7 @@ public class AdminController {
 		if (utils.isAdmin(authUser)) {
 			utils.setCustomTheme(Utils.stripAndTrim(theme, "", true), css);
 		}
-		return "redirect:" + ADMINLINK;
+		return "redirect:" + ADMINLINK + "#themes-tab";
 	}
 
 	@ResponseBody
@@ -429,6 +485,15 @@ public class AdminController {
 			return ResponseEntity.ok().build();
 		}
 		return ResponseEntity.status(403).build();
+	}
+
+	@PostMapping("/reindex")
+	public String reindex(HttpServletRequest req, Model model) {
+		if (utils.isAdmin(utils.getAuthUser(req))) {
+			Para.asyncExecute(() -> pc.rebuildIndex());
+			logger.info("Started rebuilding the search index for '{}'...", CONF.paraAccessKey());
+		}
+		return "redirect:" + ADMINLINK;
 	}
 
 	private List<ParaObject> importFromSOArchive(ZipInputStream zipIn, ZipEntry zipEntry,
@@ -569,7 +634,7 @@ public class AdminController {
 		Map<String, String> accounts = objs.stream().collect(Collectors.
 				toMap(k -> ((Integer) k.get("accountId")).toString(), v -> (String) v.get("verifiedEmail")));
 		// find all user objects even if there are more than 10000 users in the system
-		Pager pager = new Pager(1, "_docid", false, Config.MAX_ITEMS_PER_PAGE);
+		Pager pager = new Pager(1, "_docid", false, CONF.maxItemsPerPage());
 		List<User> users;
 		do {
 			users = pc.findQuery(Utils.type(User.class), "*", pager);
@@ -585,7 +650,7 @@ public class AdminController {
 					}
 				});
 			}
-			pc.invokePatch("_batch", Entity.json(toPatch));
+			pc.invokePatch("_batch", toPatch, Map.class);
 			toPatch.clear();
 		} while (!users.isEmpty());
 	}
@@ -604,7 +669,7 @@ public class AdminController {
 				}
 				toPatch.add(user);
 			}
-			pc.invokePatch("_batch", Entity.json(toPatch));
+			pc.invokePatch("_batch", toPatch, Map.class);
 		}
 	}
 }

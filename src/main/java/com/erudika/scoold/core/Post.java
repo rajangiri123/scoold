@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +17,16 @@
  */
 package com.erudika.scoold.core;
 
-import com.erudika.para.core.Tag;
-import com.erudika.para.annotations.Stored;
 import com.erudika.para.client.ParaClient;
 import com.erudika.para.core.ParaObject;
 import com.erudika.para.core.Sysprop;
+import com.erudika.para.core.Tag;
 import com.erudika.para.core.User;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
+import com.erudika.para.core.annotations.Stored;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.scoold.ScooldConfig;
 import com.erudika.scoold.ScooldServer;
 import com.erudika.scoold.utils.ScooldUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -40,10 +41,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.validation.constraints.Size;
-import org.apache.commons.lang3.StringUtils;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotEmpty;
+import javax.validation.constraints.Size;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  *
@@ -52,6 +53,7 @@ import javax.validation.constraints.NotEmpty;
 public abstract class Post extends Sysprop {
 
 	private static final long serialVersionUID = 1L;
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 
 	public static final String DEFAULT_SPACE = "scooldspace:default";
 	public static final String ALL_MY_SPACES = "scooldspace:*";
@@ -78,6 +80,7 @@ public abstract class Post extends Sysprop {
 	@Stored private List<String> commentIds;
 	@Stored private String space;
 	@Stored private Map<String, String> followers;
+	@Stored private Boolean deprecated;
 
 	private transient Profile author;
 	private transient Profile lastEditor;
@@ -91,6 +94,17 @@ public abstract class Post extends Sysprop {
 
 	private ParaClient client() {
 		return ScooldUtils.getInstance().getParaClient();
+	}
+
+	public Boolean getDeprecated() {
+		if (deprecated == null || isReply()) {
+			deprecated = false;
+		}
+		return deprecated;
+	}
+
+	public void setDeprecated(Boolean deprecated) {
+		this.deprecated = deprecated;
 	}
 
 	public Long getLastactivity() {
@@ -260,7 +274,7 @@ public abstract class Post extends Sysprop {
 
 	public String create() {
 		updateTags(null, getTags());
-		this.body = Utils.abbreviate(this.body, Config.getConfigInt("max_post_length", 20000));
+		this.body = Utils.abbreviate(this.body, ScooldUtils.getConfig().maxPostLength());
 		Post p = client().create(this);
 		if (p != null) {
 			Revision.createRevisionFromPost(p, true);
@@ -346,7 +360,7 @@ public abstract class Post extends Sysprop {
 		});
 		client().updateAll(updateUs);
 		client().deleteAll(deleteUs);
-		int tagsLimit = Math.min(ScooldServer.MAX_TAGS_PER_POST, 100);
+		int tagsLimit = Math.min(CONF.maxTagsPerPost(), 100);
 		setTags(newTagz.values().stream().limit(tagsLimit).map(t -> t.getTag()).collect(Collectors.toList()));
 	}
 
@@ -475,7 +489,7 @@ public abstract class Post extends Sysprop {
 		Post p = this;
 		String ptitle = Utils.noSpaces(Utils.stripAndTrim(p.getTitle()), "-");
 		String pid = (noid ? "" : "/" + p.getId() + "/" + ptitle);
-		String ctx = ScooldServer.CONTEXT_PATH;
+		String ctx = CONF.serverContextPath();
 		if (p.isQuestion()) {
 			return ctx + (plural ? ScooldServer.QUESTIONSLINK : ScooldServer.QUESTIONLINK + pid);
 		} else if (p.isFeedback()) {

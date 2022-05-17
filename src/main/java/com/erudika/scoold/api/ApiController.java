@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,21 +17,21 @@
  */
 package com.erudika.scoold.api;
 
-import com.erudika.para.annotations.Locked;
 import com.erudika.para.client.ParaClient;
 import com.erudika.para.core.ParaObject;
 import com.erudika.para.core.Sysprop;
 import com.erudika.para.core.Tag;
 import com.erudika.para.core.User;
 import com.erudika.para.core.Webhook;
+import com.erudika.para.core.annotations.Locked;
+import com.erudika.para.core.utils.Config;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Para;
 import com.erudika.para.core.utils.ParaObjectUtils;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
-import com.erudika.para.validation.ValidationUtils;
-import com.erudika.scoold.ScooldServer;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.para.core.validation.ValidationUtils;
+import com.erudika.scoold.ScooldConfig;
 import static com.erudika.scoold.ScooldServer.AUTH_USER_ATTRIBUTE;
-import static com.erudika.scoold.ScooldServer.CONTEXT_PATH;
 import static com.erudika.scoold.ScooldServer.REST_ENTITY_ATTRIBUTE;
 import com.erudika.scoold.controllers.AdminController;
 import com.erudika.scoold.controllers.CommentController;
@@ -52,6 +52,7 @@ import com.erudika.scoold.core.Report;
 import com.erudika.scoold.core.Revision;
 import com.erudika.scoold.core.UnapprovedQuestion;
 import com.erudika.scoold.core.UnapprovedReply;
+import com.erudika.scoold.utils.BadRequestException;
 import com.erudika.scoold.utils.ScooldUtils;
 import java.io.IOException;
 import java.util.Arrays;
@@ -70,7 +71,6 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.ws.rs.BadRequestException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
@@ -98,7 +98,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
  * @author Alex Bogdanovski [alex@erudika.com]
  */
 @RestController
-@RequestMapping("/api")
+@RequestMapping(value = "/api", produces = "application/json")
 @SuppressWarnings("unchecked")
 public class ApiController {
 
@@ -107,6 +107,7 @@ public class ApiController {
 
 	private final ScooldUtils utils;
 	private final ParaClient pc;
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 
 	@Inject
 	private QuestionsController questionsController;
@@ -142,8 +143,8 @@ public class ApiController {
 			return null;
 		}
 		Map<String, Object> intro = new HashMap<>();
-		intro.put("message", Config.APP_NAME + " API, see docs at " + ScooldServer.getServerURL()
-				+ CONTEXT_PATH + "/apidocs");
+		intro.put("message", CONF.appName() + " API, see docs at " + CONF.serverUrl()
+				+ CONF.serverContextPath() + "/apidocs");
 		boolean healthy;
 		try {
 			healthy = pc != null && pc.getTimestamp() > 0;
@@ -346,7 +347,7 @@ public class ApiController {
 	public List<Map<String, Object>> getPostRevisions(@PathVariable String id,
 			HttpServletRequest req, HttpServletResponse res) {
 		Model model = new ExtendedModelMap();
-		revisionsController.get(id, req, model);
+		revisionsController.get(id, req, res, model);
 		Post post = (Post) model.getAttribute("showPost");
 		if (post == null) {
 			res.setStatus(HttpStatus.NOT_FOUND.value());
@@ -383,16 +384,15 @@ public class ApiController {
 		if (errors.length == 0) {
 			// generic and password providers are identical but this was fixed in Para 1.37.1 (backwards compatibility)
 			String provider = "generic".equals(newUser.getIdentityProvider()) ? "password" : newUser.getIdentityProvider();
-			User createdUser = pc.signIn(provider, newUser.getIdentifier() + Config.SEPARATOR +
-					newUser.getName() + Config.SEPARATOR + newUser.getPassword(), false);
+			User createdUser = pc.signIn(provider, newUser.getIdentifier() + Para.getConfig().separator() +
+					newUser.getName() + Para.getConfig().separator() + newUser.getPassword(), false);
 			// user is probably active:false so activate them
 			List<User> created = pc.findQuery(newUser.getType(), Config._EMAIL + ":" + newUser.getEmail());
 			if (createdUser == null && !created.isEmpty()) {
 				createdUser = created.iterator().next();
 				if (Utils.timestamp() - createdUser.getTimestamp() > TimeUnit.SECONDS.toMillis(20)) {
 					createdUser = null; // user existed previously
-				} else
-					if (newUser.getActive() && !createdUser.getActive()) {
+				} else if (newUser.getActive() && !createdUser.getActive()) {
 					createdUser.setActive(true);
 					pc.update(createdUser);
 				}
@@ -430,7 +430,7 @@ public class ApiController {
 
 	@GetMapping("/users/{id}")
 	public Map<String, Object> getUser(@PathVariable String id, HttpServletRequest req, HttpServletResponse res) {
-		List<?> usrProfile = pc.readAll(Arrays.asList(StringUtils.substringBefore(id, Config.SEPARATOR), Profile.id(id)));
+		List<?> usrProfile = pc.readAll(Arrays.asList(StringUtils.substringBefore(id, Para.getConfig().separator()), Profile.id(id)));
 		Iterator<?> it = usrProfile.iterator();
 		User u = it.hasNext() ? (User) it.next() : null;
 		Profile p = it.hasNext() ? (Profile) it.next() : null;
@@ -745,12 +745,12 @@ public class ApiController {
 			badReq("Missing request body.");
 			return null;
 		}
-		String targetUrl = (String) entity.get("targetUrl");
-		if (!Utils.isValidURL(targetUrl)) {
+		Webhook w = ParaObjectUtils.setAnnotatedFields(new Webhook(), entity, null);
+		if (StringUtils.isBlank(w.getTriggeredEvent()) && !Utils.isValidURL(w.getTargetUrl())) {
 			badReq("Property 'targetUrl' must be a valid URL.");
 			return null;
 		}
-		Webhook webhook = pc.create(ParaObjectUtils.setAnnotatedFields(new Webhook(), entity, null));
+		Webhook webhook = pc.create(w);
 		if (webhook == null) {
 			badReq("Failed to create webhook.");
 			return null;
@@ -897,6 +897,76 @@ public class ApiController {
 		adminController.restore(file, isso, req, res);
 	}
 
+	@GetMapping("/config")
+	public String config(HttpServletRequest req, HttpServletResponse res) {
+		String format = req.getParameter("format");
+		if ("hocon".equalsIgnoreCase(format)) {
+			res.setContentType("application/hocon");
+			return CONF.render(false);
+		} else {
+			res.setContentType("application/json");
+			return CONF.render(true);
+		}
+	}
+
+	@PutMapping("/config")
+	public String configSet(HttpServletRequest req, HttpServletResponse res) {
+		Map<String, Object> entity = readEntity(req);
+		if (entity.isEmpty()) {
+			badReq("Missing request body.");
+		}
+		for (Map.Entry<String, Object> entry : entity.entrySet()) {
+			System.setProperty(CONF.getConfigRootPrefix() + "." + entry.getKey(), entry.getValue().toString());
+		}
+		CONF.store();
+		pc.setAppSettings(CONF.getParaAppSettings());
+		triggerConfigUpdateEvent(CONF.getConfigMap());
+		return config(req, res);
+	}
+
+	@GetMapping("/config/get/{key}")
+	public Map<String, Object> configGet(@PathVariable String key, HttpServletRequest req, HttpServletResponse res) {
+		Object value = null;
+		try {
+			value = CONF.getConfigValue(key, null);
+		} catch (Exception e) {	}
+		return Collections.singletonMap("value", value);
+	}
+
+	@PutMapping("/config/set/{key}")
+	public void configSet(@PathVariable String key, HttpServletRequest req, HttpServletResponse res) {
+		Map<String, Object> entity = readEntity(req);
+		if (entity.isEmpty()) {
+			badReq("Missing request body.");
+		}
+		Object value = entity.getOrDefault("value", null);
+		if (value != null && !StringUtils.isBlank(value.toString())) {
+			System.setProperty(CONF.getConfigRootPrefix() + "." + key, value.toString());
+		} else {
+			System.clearProperty(CONF.getConfigRootPrefix() + "." + key);
+		}
+		CONF.store();
+		if (CONF.getParaAppSettings().containsKey(key)) {
+			pc.addAppSetting(key, value);
+		}
+		triggerConfigUpdateEvent(Collections.singletonMap(CONF.getConfigRootPrefix() + "." + key, value));
+	}
+
+	@GetMapping("/config/options")
+	public ResponseEntity<Object> configOptions(HttpServletRequest req, HttpServletResponse res) {
+		String format = req.getParameter("format");
+		String groupby = req.getParameter("groupby");
+		if ("markdown".equalsIgnoreCase(format)) {
+			res.setContentType("text/markdown");
+		} else if ("hocon".equalsIgnoreCase(format)) {
+			res.setContentType("application/hocon");
+		} else if (StringUtils.isBlank(format) || "json".equalsIgnoreCase(format)) {
+			res.setContentType("application/json");
+		}
+		return ResponseEntity.ok(CONF.renderConfigDocumentation(format,
+				StringUtils.isBlank(groupby) || "category".equalsIgnoreCase(groupby)));
+	}
+
 	private boolean voteRequest(boolean isUpvote, String id, String userid, HttpServletRequest req) {
 		if (!StringUtils.isBlank(userid)) {
 			Profile authUser = pc.read(Profile.id(userid));
@@ -914,11 +984,33 @@ public class ApiController {
 		List<String> ids = spaces.stream().map(s -> utils.getSpaceId(s)).
 				filter(s -> !s.isEmpty() && !utils.isDefaultSpace(s)).distinct().collect(Collectors.toList());
 		List<Sysprop> existing = pc.readAll(ids);
-		return existing.stream().map(s -> s.getId() + Config.SEPARATOR + s.getName()).collect(Collectors.toList());
+		return existing.stream().map(s -> s.getId() + Para.getConfig().separator() + s.getName()).collect(Collectors.toList());
 	}
 
 	private List<String> readSpaces(String... spaces) {
 		return readSpaces(Arrays.asList(spaces));
+	}
+
+	private void triggerConfigUpdateEvent(Map<String, Object> payload) {
+		int nodes = CONF.clusterNodes();
+		if (nodes > 1) {
+			Para.asyncExecute(() -> {
+				Webhook trigger = new Webhook();
+				trigger.setTimestamp(Utils.timestamp());
+				trigger.setUpdate(true);
+				trigger.setUpdateAll(true);
+				trigger.setSecret("{{secretKey}}");
+				trigger.setActive(true);
+				trigger.setUrlEncoded(false);
+				trigger.setTriggeredEvent("config.update");
+				trigger.setCustomPayload(payload);
+				trigger.setTargetUrl(CONF.serverUrl() + "/webhooks/config");
+				// the goal is to saturate the load balancer and hopefully the payload reaches all nodes behind it
+				trigger.setRepeatedDeliveryAttempts(nodes * 2);
+				WebhooksController.setLastConfigUpdate(trigger.getTimestamp().toString());
+				pc.create(trigger);
+			});
+		}
 	}
 
 	@ExceptionHandler({Exception.class})

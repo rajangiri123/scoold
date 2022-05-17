@@ -1,5 +1,5 @@
 /*
- * Copyright 2013-2021 Erudika. https://erudika.com
+ * Copyright 2013-2022 Erudika. https://erudika.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,32 +19,45 @@ package com.erudika.scoold.controllers;
 
 import com.erudika.para.client.ParaClient;
 import com.erudika.para.core.Address;
+import com.erudika.para.core.ParaObject;
+import com.erudika.para.core.User;
+import com.erudika.para.core.utils.Pager;
+import com.erudika.para.core.utils.Para;
 import com.erudika.para.core.utils.ParaObjectUtils;
-import com.erudika.para.utils.Config;
-import com.erudika.para.utils.Pager;
-import com.erudika.para.utils.Utils;
-import static com.erudika.scoold.ScooldServer.ANSWER_APPROVE_REWARD_AUTHOR;
-import static com.erudika.scoold.ScooldServer.ANSWER_APPROVE_REWARD_VOTER;
-import static com.erudika.scoold.ScooldServer.MAX_REPLIES_PER_POST;
-import com.erudika.scoold.core.Comment;
+import com.erudika.para.core.utils.Utils;
+import com.erudika.scoold.ScooldConfig;
+import static com.erudika.scoold.ScooldServer.QUESTIONSLINK;
+import static com.erudika.scoold.ScooldServer.SIGNINLINK;
 import com.erudika.scoold.core.Post;
 import com.erudika.scoold.core.Profile;
 import com.erudika.scoold.core.Profile.Badge;
+import com.erudika.scoold.core.Question;
 import com.erudika.scoold.core.Reply;
+import com.erudika.scoold.core.Revision;
+import com.erudika.scoold.core.UnapprovedQuestion;
+import com.erudika.scoold.core.UnapprovedReply;
 import com.erudika.scoold.utils.ScooldUtils;
+import com.erudika.scoold.utils.avatars.AvatarFormat;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.ws.rs.Produces;
 import org.apache.commons.beanutils.BeanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,17 +65,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import static com.erudika.scoold.ScooldServer.QUESTIONSLINK;
-import static com.erudika.scoold.ScooldServer.SIGNINLINK;
-import com.erudika.scoold.core.Question;
-import com.erudika.scoold.core.Revision;
-import com.erudika.scoold.core.UnapprovedQuestion;
-import com.erudika.scoold.core.UnapprovedReply;
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Optional;
-import java.util.Set;
 
 /**
  *
@@ -73,6 +75,7 @@ import java.util.Set;
 public class QuestionController {
 
 	public static final Logger logger = LoggerFactory.getLogger(QuestionController.class);
+	private static final ScooldConfig CONF = ScooldUtils.getConfig();
 
 	private final ScooldUtils utils;
 	private final ParaClient pc;
@@ -115,16 +118,20 @@ public class QuestionController {
 		utils.updateViewCount(showPost, req, res);
 
 		model.addAttribute("path", "question.vm");
-		model.addAttribute("title", utils.getLang(req).get("questions.title") + " - " + showPost.getTitle());
+		model.addAttribute("title", showPost.getTitle());
 		model.addAttribute("description", Utils.abbreviate(Utils.stripAndTrim(showPost.getBody(), " "), 195));
+		model.addAttribute("keywords", showPost.getTagsString());
 		model.addAttribute("itemcount", itemcount);
 		model.addAttribute("showPost", allPosts.removeFirst());
 		model.addAttribute("answerslist", allPosts);
 		model.addAttribute("similarquestions", utils.getSimilarPosts(showPost, new Pager(10)));
-		model.addAttribute("maxCommentLength", Comment.MAX_COMMENT_LENGTH);
+		model.addAttribute("maxCommentLength", CONF.maxCommentLength());
 		model.addAttribute("includeGMapsScripts", utils.isNearMeFeatureEnabled());
 		model.addAttribute("maxCommentLengthError", Utils.formatMessage(utils.getLang(req).get("maxlength"),
-				Comment.MAX_COMMENT_LENGTH));
+				CONF.maxCommentLength()));
+		if (showPost.getAuthor() != null) {
+			model.addAttribute("ogimage", utils.getFullAvatarURL(showPost.getAuthor(), AvatarFormat.Profile));
+		}
 		return "base";
 	}
 
@@ -174,7 +181,7 @@ public class QuestionController {
 			updatePost(showPost, authUser);
 			updateLocation(showPost, authUser, location, latlng);
 			utils.addBadgeOnceAndUpdate(authUser, Badge.EDITOR, true);
-			utils.sendUpdatedFavTagsNotifications(showPost, new ArrayList<>(addedTags));
+			utils.sendUpdatedFavTagsNotifications(showPost, new ArrayList<>(addedTags), req);
 		}
 		model.addAttribute("post", showPost);
 		if (utils.isAjaxRequest(req)) {
@@ -189,7 +196,7 @@ public class QuestionController {
 		}
 	}
 
-	@PostMapping({"/{id}", "/{id}/{title}"})
+	@PostMapping({"/{id}", "/{id}/{title}", "/{id}/{title}/write"})
 	public String reply(@PathVariable String id, @PathVariable(required = false) String title,
 			@RequestParam(required = false) Boolean emailme, HttpServletRequest req,
 			HttpServletResponse res, Model model) {
@@ -219,7 +226,7 @@ public class QuestionController {
 
 				showPost.setAnswercount(showPost.getAnswercount() + 1);
 				showPost.setLastactivity(System.currentTimeMillis());
-				if (showPost.getAnswercount() >= MAX_REPLIES_PER_POST) {
+				if (showPost.getAnswercount() >= CONF.maxRepliesPerPost()) {
 					showPost.setCloserid("0");
 				}
 				// update without adding revisions
@@ -229,7 +236,7 @@ public class QuestionController {
 				model.addAttribute("showPost", showPost);
 				model.addAttribute("answerslist", Collections.singletonList(answer));
 				// send email to the question author
-				utils.sendReplyNotifications(showPost, answer);
+				utils.sendReplyNotifications(showPost, answer, req);
 				model.addAttribute("newpost", getNewAnswerPayload(answer));
 			} else {
 				model.addAttribute("error", error);
@@ -256,7 +263,7 @@ public class QuestionController {
 			if (showPost instanceof UnapprovedQuestion) {
 				showPost.setType(Utils.type(Question.class));
 				pc.create(showPost);
-				utils.sendNewPostNotifications(showPost);
+				utils.sendNewPostNotifications(showPost, req);
 			} else if (showPost instanceof UnapprovedReply) {
 				showPost.setType(Utils.type(Reply.class));
 				pc.create(showPost);
@@ -273,7 +280,7 @@ public class QuestionController {
 			return "redirect:" + req.getRequestURI();
 		}
 		if (utils.canEdit(showPost, authUser) && answerid != null &&
-				(utils.isMine(showPost, authUser) || utils.isAdmin(authUser))) {
+				(utils.isMine(showPost, authUser) || utils.isMod(authUser))) {
 			Reply answer = (Reply) pc.read(answerid);
 
 			if (answer != null && answer.isReply()) {
@@ -285,16 +292,16 @@ public class QuestionController {
 						// Answer approved award - UNDO
 						showPost.setAnswerid("");
 						if (!samePerson) {
-							author.removeRep(ANSWER_APPROVE_REWARD_AUTHOR);
-							authUser.removeRep(ANSWER_APPROVE_REWARD_VOTER);
+							author.removeRep(CONF.answerApprovedRewardAuthor());
+							authUser.removeRep(CONF.answerApprovedRewardVoter());
 							pc.updateAll(Arrays.asList(author, authUser));
 						}
 					} else {
 						// Answer approved award - GIVE
 						showPost.setAnswerid(answerid);
 						if (!samePerson) {
-							author.addRep(ANSWER_APPROVE_REWARD_AUTHOR);
-							authUser.addRep(ANSWER_APPROVE_REWARD_VOTER);
+							author.addRep(CONF.answerApprovedRewardAuthor());
+							authUser.addRep(CONF.answerApprovedRewardVoter());
 							utils.addBadgeOnce(authUser, Badge.NOOB, true);
 							pc.updateAll(Arrays.asList(author, authUser));
 						}
@@ -350,15 +357,17 @@ public class QuestionController {
 			return "redirect:" + req.getRequestURI();
 		}
 		if (!showPost.isReply()) {
-			if ((utils.isMine(showPost, authUser) || utils.isMod(authUser))) {
+			if ((utils.isMine(showPost, authUser) && utils.canDelete(showPost, authUser)) || utils.isMod(authUser)) {
 				showPost.delete();
 				model.addAttribute("deleted", true);
 				return "redirect:" + QUESTIONSLINK + "?success=true&code=16";
 			}
 		} else if (showPost.isReply()) {
-			if (utils.isMine(showPost, authUser) || utils.isMod(authUser)) {
-				Post parent = pc.read(showPost.getParentid());
+			Post parent = pc.read(showPost.getParentid());
+			if ((utils.isMine(showPost, authUser) && utils.canDelete(showPost, authUser, parent.getAnswerid())) ||
+					utils.isMod(authUser)) {
 				parent.setAnswercount(parent.getAnswercount() - 1);
+				parent.setAnswerid(showPost.getId().equals(parent.getAnswerid()) ? "" : parent.getAnswerid());
 				parent.update();
 				showPost.delete();
 				model.addAttribute("deleted", true);
@@ -367,11 +376,75 @@ public class QuestionController {
 		return "redirect:" + showPost.getPostLink(false, false);
 	}
 
+	@PostMapping("/{id}/deprecate")
+	public String deprecate(@PathVariable String id, HttpServletRequest req) {
+		Post showPost = pc.read(id);
+		Profile authUser = utils.getAuthUser(req);
+		if (!utils.canEdit(showPost, authUser) || showPost == null) {
+			return "redirect:" + req.getRequestURI();
+		}
+		if (utils.canEdit(showPost, authUser)) {
+			showPost.setDeprecated(!showPost.getDeprecated());
+			showPost.update();
+		}
+		return "redirect:" + showPost.getPostLink(false, false);
+	}
+
+	@PostMapping("/{id}/merge-into")
+	public String merge(@PathVariable String id, @RequestParam String id2, HttpServletRequest req) {
+		Post showPost = pc.read(id);
+		Post targetPost = pc.read(id2);
+		Profile authUser = utils.getAuthUser(req);
+		if (!(utils.canEdit(showPost, authUser) && utils.canEdit(targetPost, authUser)) || showPost == null ||
+				targetPost == null || showPost.isReply() || targetPost.isReply() || showPost.equals(targetPost)) {
+			return "redirect:" + req.getRequestURI();
+		}
+		if (utils.canEdit(showPost, authUser) && utils.canEdit(targetPost, authUser)) {
+			if (CONF.mergeQuestionBodies()) {
+				targetPost.setBody(targetPost.getBody() + "\n\n" + showPost.getBody());
+			}
+			targetPost.setAnswercount(targetPost.getAnswercount() + showPost.getAnswercount());
+			targetPost.setViewcount(targetPost.getViewcount() + showPost.getViewcount());
+			if (showPost.hasFollowers()) {
+				for (Map.Entry<String, String> entry : showPost.getFollowers().entrySet()) {
+					User u = new User(entry.getKey());
+					u.setEmail(entry.getValue());
+					targetPost.addFollower(u);
+				}
+			}
+			Pager pager = new Pager(1, "_docid", false, CONF.maxItemsPerPage());
+			List<Reply> answers;
+			do {
+				answers = pc.getChildren(showPost, Utils.type(Reply.class), pager);
+				for (Reply answer : answers) {
+					answer.setParentid(targetPost.getId());
+					answer.setTitle(targetPost.getTitle());
+				}
+				pc.createAll(answers); // overwrite
+			} while (!answers.isEmpty());
+			targetPost.update();
+			showPost.delete();
+		}
+		return "redirect:" + targetPost.getPostLink(false, false);
+	}
+
+	@GetMapping("/find/{q}")
+	@Produces("application/json")
+	public ResponseEntity<List<ParaObject>> findAjax(@PathVariable String q, HttpServletRequest req, HttpServletResponse res) {
+		if (!utils.isDefaultSpacePublic() && !utils.isAuthenticated(req)) {
+			res.setStatus(401);
+			return ResponseEntity.status(401).body(Collections.emptyList());
+		}
+		String qs = utils.sanitizeQueryString(q + "*", req);
+		Pager pager = new Pager(1, "votes", true, 10);
+		return ResponseEntity.ok(pc.findQuery(Utils.type(Question.class), qs, pager));
+	}
+
 	private void changeSpaceForAllAnswers(Post showPost, String space) {
 		if (showPost == null || showPost.isReply()) {
 			return;
 		}
-		Pager pager = new Pager(1, "_docid", false, Config.MAX_ITEMS_PER_PAGE);
+		Pager pager = new Pager(1, "_docid", false, CONF.maxItemsPerPage());
 		List<Reply> answerslist;
 		try {
 			do {
@@ -425,7 +498,7 @@ public class QuestionController {
 
 	private void updateLocation(Post showPost, Profile authUser, String location, String latlng) {
 		if (!showPost.isReply() && !StringUtils.isBlank(latlng)) {
-			Address addr = new Address(showPost.getId() + Config.SEPARATOR + Utils.type(Address.class));
+			Address addr = new Address(showPost.getId() + Para.getConfig().separator() + Utils.type(Address.class));
 			addr.setAddress(location);
 			addr.setCountry(location);
 			addr.setLatlng(latlng);

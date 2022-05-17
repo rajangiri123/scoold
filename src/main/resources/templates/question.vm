@@ -7,7 +7,7 @@
 			#end
 
 			#if($showPost.space && !$scooldUtils.isDefaultSpace($showPost.space))
-				<strong class="grey-text">$scooldUtils.getSpaceName($!showPost.space) / </strong>
+				<strong class="grey-text">$scooldUtils.getSpaceName($!showPost.space)</strong> /
 			#end
 			#if ($showPost.answercount > 0)
 				#if ($showPost.answerid && !$showPost.answerid.isEmpty())
@@ -17,6 +17,9 @@
 			#else
 				$!lang.get("posts.unanswered")
 			#end
+			#if($showPost.deprecated)
+				/ <strong class="orange-text">$!lang.get('deprecated')</strong>
+			#end
 			</span>
 			<div id="post-title" class="largeText">$!{showPost.title}</div>
 			<hr>
@@ -24,6 +27,14 @@
 			<div class="mbl pbl">
 				#postbox($showPost $showPost)
 			</div>
+
+			#if ($showPost.deprecated)
+			<div class="center card pvs phl mediumText">
+				<p class="grey-text text-darken-2">
+					<i class="fa fa-exclamation-circle orange-text"></i> <strong>$!lang.get('deprecated'):</strong> $!lang.get("posts.deprecated")
+				</p>
+			</div>
+			#end
 
 			#if (!$showPost.isReply())
 				#if ($answerslist && !$answerslist.isEmpty()) #set($hideAnswersHead = "") #else #set($hideAnswersHead = "hide")#end
@@ -36,14 +47,33 @@
 						<a href="$questionlink/$showPost.id/#stripstr($showPost.title)?sortby=newest#sortorderparam('&' 'newest')" title="Newest answers"
 							 class="chip $sortarr.newest">#sortordericon("newest") $!lang.get("newest")</a>
 					</span>
-					<h4 class="grey-text">$!lang.get("answers.title") #showcount($itemcount.count)</h4>
+					<h3 class="grey-text">$!lang.get("answers.title") #showcount($itemcount.count)</h3>
 				</div>
 
 				#paginate("replies" $itemcount "" "page")
 
 				#if(!$showPost.isClosed())
+					#if($request.servletPath.endsWith("/write"))
+						#set($answerBoxHideClass = "")
+						#set($showAnswerBoxClass = "hide")
+					#else
+						#set($answerBoxHideClass = "hide")
+						#set($showAnswerBoxClass = "")
+					#end
+					#if(!$authenticated)#set($showAnswerBoxClass = "")#end
+
+					<div class="mvl pvl center $!{showAnswerBoxClass}">
+						#if ($authenticated)
+							<a href="#write-post" class="btn waves-effect waves-light show-answer-question-form"
+								 title="Answer this question"><i class="fa fa-pencil"></i> $!lang.get("posts.writeanswer")</a>
+						#else
+							<a href="$signinlink?returnto=$!{returnto.replaceAll('/write', '')}/write" rel="nofollow" class="btn waves-effect waves-light"
+								 title="Answer this question"><i class="fa fa-pencil"></i> $!lang.get("posts.writeanswer")</a>
+						#end
+					</div>
+
 					#if ($authenticated)
-						<div class="pvl mbm">
+						<div class="pvl mbm $!{answerBoxHideClass}">
 							<form method="post" id="answer-question-form">
 								#sectoken(false "CREATE_REPLY")
 								<a id="write-post"></a>
@@ -72,11 +102,6 @@
 									<i class="fa fa-paper-plane left"></i>$!lang.get('post')
 								</button>
 							</form>
-						</div>
-					#else
-						<div class="mvl pvl center">
-								<a href="$signinlink?returnto=$!returnto" rel="nofollow" class="btn-large"
-									 title="Answer this question"><i class="fa fa-pencil"></i> $!lang.get("posts.writeanswer")</a>
 						</div>
 					#end
 				#end
@@ -117,7 +142,7 @@
 				#end
 				#if ($showPost.tags && !$showPost.tags.isEmpty())
 					<div class="mediumText pvs"><i class="fa fa-tags grey-text"></i> $!lang.get('tags.title')</div>
-					<div class="mtm tags-aside">#tagsbox($showPost.tags $questionslink)</div>
+					<div class="mtm tags-aside">#tagsbox($showPost $questionslink)</div>
 				#end
 			</div>
 

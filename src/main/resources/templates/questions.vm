@@ -4,7 +4,7 @@
 <div class="page-wrapper">
 	#if ($askSelected)
 		<h2>$!lang.get("posts.ask")</h2>
-		<hr>
+
 		<div class="pts">
 			<form method="post" id="ask-question-form">
 				#sectoken(false "CREATE_POST")
@@ -34,12 +34,11 @@
 					</div>
 				</div>
 
-				#if($scooldUtils.isAllSpaces($currentSpace))
-					#spaceselect()
-				#end
+				#spaceselect()
 
 				#if($scooldUtils.isNearMeFeatureEnabled())
-					<a href="#" class="next-div-toggle mll pll click2hide">
+				<div class="mll pll">
+					<a href="#" class="next-div-toggle click2hide">
 						<i class="fa fa-map-marker"></i> $!lang.get("posts.location")
 					</a>
 					<div class="input-field hide">
@@ -49,6 +48,7 @@
 						<input type="hidden" name="latlng" value="">
 						<input type="hidden" name="address" value="">
 					</div>
+				</div>
 				#end
 
 				<div>
@@ -102,7 +102,9 @@
 				#set($filterActiveTooltip = $!lang.get('posts.filtered'))
 			#end
 			<a href="#" id="question-filter-btn" class="next-div-toggle chip tooltipped ${filterActiveClass}"
-				 data-tooltip="${filterActiveTooltip}"><i class="fa fa-filter"></i></a>
+				 data-tooltip="${filterActiveTooltip}" title="${filterActiveTooltip}">
+				<i class="fa fa-filter"></i><span class="hide">Filter</span>
+			</a>
 		</div>
 
 		<h2 class="hide-on-med-and-down">#questionsTitle()</h2>
@@ -113,30 +115,38 @@
 					<div class="col l6 m12 s12">
 						<strong>$!lang.get('tags.title')</strong>
 						<div class="input-field">
+							#set($tagsFromPager = "$!itemcount.name" )
+							#set($tagsFromPagerString = "$!tagsFromPager.replaceFirst('with_tags:', '')" )
 							#set($tagz = "$utils.noSpaces($!authUser.getFavtags().toString(), '')")
 							<div class="chips chips-autocomplete" title="$!lang.get('tags.title')"></div>
 							#if ($authenticated && $tagFilterOn)
 								<input type="hidden" name="tags" value="$!tagz.replaceAll('[\[\]]', '')">
 							#else
-								#set($tagsFromPager = "$itemcount.name" )
 								#if($tagsFromPager && $tagsFromPager.startsWith("with_tags:"))
-									<input type="hidden" name="tags" value="$!tagsFromPager.replaceFirst('with_tags:', '')">
+									<input type="hidden" name="tags" value="$tagsFromPagerString.replaceFirst('\+', '')">
 								#else
 									<input type="hidden" name="tags" value="$!tag">
 								#end
 							#end
 						</div>
-						<div class="switch">
-							<strong class="mrm">View</strong>
+						<div>
 							<label>
-								<span><i class="fa fa-th-list fa-lg tooltipped" data-tooltip="Classic"></i></span>
-								#if($compactViewEnabled)
-								<input name="compactViewEnabled" type="checkbox" value="true" checked="checked">
+								#if(!$tagsFromPagerString.startsWith("+"))
+								<input name="matchAllTags" type="radio" value="false" checked>
 								#else
-								<input name="compactViewEnabled" type="checkbox" value="true">
+								<input name="matchAllTags" type="radio" value="false">
 								#end
-								<span class="lever"></span>
-								<span><i class="fa fa-list fa-lg tooltipped" data-tooltip="Compact"></i></span>
+								<span>$!lang.get('posts.matchany')</span>
+							</label>
+						</div>
+						<div>
+							<label>
+								#if($tagsFromPagerString.startsWith("+"))
+								<input name="matchAllTags" type="radio" value="true" checked>
+								#else
+								<input name="matchAllTags" type="radio" value="true">
+								#end
+								<span>$!lang.get('posts.matchall')</span>
 							</label>
 						</div>
 					</div>
@@ -147,8 +157,8 @@
 							#if($itemcount.sortby == $prop)selected#end
 							#end
 							<select name="sortby">
-								<option value="timestamp" #sortselected("timestamp")>Creation date</option>
-								<option value="creatorid" #sortselected("creatorid")>Creator ID</option>
+								<option value="timestamp" #sortselected("timestamp")>$!lang.get('posts.creationdate')</option>
+								<option value="creatorid" #sortselected("creatorid")>$!lang.get('posts.creatorid')</option>
 								<option value="votes" #sortselected("votes")>$!lang.get('votes')</option>
 								<option value="properties.answercount" #sortselected("properties.answercount")>$!lang.get('answers.title')</option>
 								<option value="properties.viewcount" #sortselected("properties.viewcount")>$!lang.get('posts.views')</option>
@@ -183,6 +193,14 @@
 							<input type="number" name="limit" min="10" max="100" value="$!itemcount.limit">
 							<span>$!lang.get('perpage')</span>
 						</div>
+						<label>
+							#if($compactViewEnabled)
+							<input name="compactViewEnabled" type="checkbox" value="true" checked="checked" class="filled-in">
+							#else
+							<input name="compactViewEnabled" type="checkbox" value="true" class="filled-in">
+							#end
+							<span>$!lang.get('posts.compactview')</span>
+						</label>
 					</div>
 					<div class="col l2 m4 s12">
 						<div class="center-align pvm">
@@ -196,7 +214,6 @@
 				</div>
 			</form>
 		</div>
-		<hr>
 
 		#if (!$questionslist || $questionslist.isEmpty())
 			<div class="card-panel hugeText center-align grey-text">

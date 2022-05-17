@@ -17,25 +17,25 @@
 		<link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
 		<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
 		<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,500" rel="stylesheet">
-		<meta name="description" content="Scoold is an open source Questions &amp; Answers platform written in Java.">
+		<meta name="description" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta name="keywords" content="scoold, knowledge sharing, collaboration, wiki, forum, Q&amp;A, questions and answers, stackoverflow clone">
 		<!-- Google Plus -->
 		<meta name="google-site-verification" content="EXw8lqPcluhsyAkk657Dqu99QxTKvuyb-pVDDjNOtso">
 		<meta itemprop="name" content="Scoold" itemtype="https://schema.org/Article">
-		<meta itemprop="description" content="Scoold is an open source Q&A platform written in Java.">
+		<meta itemprop="description" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta itemprop="image" content="https://static.scoold.com/splash.png">
 		<!-- Twitter -->
-		<meta name="twitter:card" content="Scoold is an open source Q&A platform written in Java.">
+		<meta name="twitter:card" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta name="twitter:site" content="@getscoold">
 		<meta name="twitter:title" content="Scoold">
-		<meta name="twitter:description" content="Scoold is an open source Q&A platform written in Java.">
+		<meta name="twitter:description" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta name="twitter:creator" content="">
 		<meta name="twitter:image:src" content="https://static.scoold.com/splash.png">
 		<meta name="twitter:player" content="">
 		<!-- Open Graph General (Facebook & Pinterest) -->
 		<meta property="og:url" content="https://scoold.com">
 		<meta property="og:title" content="Scoold">
-		<meta property="og:description" content="Scoold is an open source Q&A platform written in Java.">
+		<meta property="og:description" content="Scoold is the open source Questions and Answers platform for sharing knowledge in your team or organization.">
 		<meta property="og:site_name" content="Scoold Q&A">
 		<meta property="og:image" content="https://static.scoold.com/splash.png">
 		<meta property="fb:app_id" content="99517177417">
@@ -207,12 +207,13 @@
 								</a>
 							</div>
 							<ul class="right hide-on-med-and-down">
-								<li><a href="https://github.com/Erudika/scoold/releases/download/1.39.2/scoold-1.39.2.jar" title="Download">Download</a></li>
+								<li><a href="https://cloud.scoold.com" title="Scoold Cloud" class="light-blue-text">Scoold Pro Hosting</a></li>
+								<!--<li><a href="https://github.com/Erudika/scoold/releases/download/1.43.3/scoold-1.43.3.jar" title="Download">Download</a></li>-->
 								<li><a href="https://github.com/Erudika/scoold/blob/master/README.md" title="Documentation">Docs</a></li>
 								<li><a href="#faq" title="Frequently asked questions">FAQ</a></li>
 								<li class="dropit">
 									<ul>
-										<li>Demo
+										<li>Try it!
 											<ul>
 												<li><a href="https://live.scoold.com" title="Scoold Demo">Scoold Demo</a></li>
 												<li><a href="https://pro.scoold.com" title="Scoold Pro Demo">Scoold Pro Demo</a></li>
@@ -223,8 +224,8 @@
 							</ul>
 							<ul class="sidenav" id="mobile-drawer">
 								<li>&nbsp;</li>
-								<li><a href="https://github.com/Erudika/scoold/releases/download/1.39.2/scoold-1.39.2.jar" title="Download">Download</a></li>
-								<li><a href="https://paraio.com/scoold-pro" title="Buy Pro">Buy</a></li>
+								<li><a href="https://cloud.scoold.com" title="Scoold Cloud" class="light-blue-text">Scoold Pro Hosting</a></li>
+								<li><a href="https://paraio.com/scoold-pro" title="Buy Pro">Buy Pro</a></li>
 								<li><a href="#faq" title="Frequently asked questions">FAQ</a></li>
 								<li><a href="https://live.scoold.com" title="Demo">Scoold Demo</a></li>
 								<li><a href="https://pro.scoold.com" title="Demo">Scoold Pro Demo</a></li>
@@ -327,7 +328,7 @@
 
 				<div class="container pvl center-align">
 					<a href="https://paraio.com/scoold-pro" class="btn-large light-blue"><b>Buy Scoold Pro</b></a>
-					<p><b>€299</b> per host, one-time fee, basic support included</p>
+					<p><b>€499</b> per host, one-time fee, basic support included</p>
 					<p>The integration with Slack is a premium feature, only available in Scoold Pro.</p>
 				</div>
 			</section>
@@ -343,14 +344,14 @@
 								<p class="plm">You'll need a copy of Scoold Pro before continuing.</p>
 								<span class="pam">
 									<b>1.</b> <a href="https://api.slack.com/apps?new_app=1">Create a new Slack app</a> and copy the App ID, Signing Secret, Client ID and
-									Client Secret to your <tt>application.conf</tt>:
+									Client Secret to your <code>application.conf</code>:
 								</span>
 
 									<code><pre>
-  para.sl_app_id = "{Client ID}"
-  para.sl_secret = "{Client Secret}"
-  para.slack.app_id = "{App ID}"
-  para.slack.signing_secret = "{Signing Secret}"
+  scoold.sl_app_id = "{Client ID}"
+  scoold.sl_secret = "{Client Secret}"
+  scoold.slack.app_id = "{App ID}"
+  scoold.slack.signing_secret = "{Signing Secret}"
 									</pre></code>
 
 							</li>
@@ -392,7 +393,7 @@
 							</li>
 						</ul>
 						<p class="pam">
-							<b>Check the <tt><a href="https://github.com/Erudika/scoold/blob/master/README.md#slack-integration">README</a></tt> for more information.</b>
+							<b>Check the <code><a href="https://github.com/Erudika/scoold/blob/master/README.md#slack-integration">README</a></code> for more information.</b>
 						</p>
 					</div>
 
