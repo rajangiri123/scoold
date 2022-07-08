@@ -27,6 +27,7 @@ your company or team.
 - Location-based search and "near me" filtering of posts
 - I18n with RTL language support
 - Reputation and voting system with badges
+- Custom badges - add your own text, icon and color
 - Spaces (Teams) - groups of isolated questions and users
 - Webhooks with signature signing
 - [Zapier integration](https://zapier.com/developer/public-invite/96144/23ee4c1c6f03dc964b479b0d8ed027bb/)
@@ -42,7 +43,7 @@ your company or team.
 - Social login (Facebook, Google, GitHub, LinkedIn, Microsoft, Slack, Amazon, Twitter) with Gravatar support
 - Syntax highlighting for code in posts, GFM markdown support with tables, task lists and strikethrough
 - Import data from Stack Overflow for Teams
-- Emoji support - [cheat sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet/)
+- Emojis! - using this [cheat sheet](https://www.webpagefx.com/tools/emoji-cheat-sheet/) or inline Unicode
 - Support for uploading custom avatars (to Imgur, Cloudinary)
 - SEO friendly
 - Cookie consent (for GDPR, CCPA, etc.)
@@ -595,6 +596,9 @@ scoold.password_auth_enabled = true
 |`scoold.cluster_nodes`<br>Total number of nodes present in the cluster when Scoold is deployed behind a reverse proxy. | `1` | `Integer`|
 |`scoold.autoinit.root_app_secret_key`<br>If configured, Scoold will try to automatically initialize itself with Para and create its own Para app, called `app:scoold`. The keys for that new app will be saved in the configuration file. | ` ` | `String`|
 |`scoold.autoinit.para_config_file`<br>Does the same as `scoold.autoinit.root_app_secret_key` but tries to read the secret key for the root Para app from the Para configuration file, wherever that may be. | ` ` | `String`|
+|`scoold.sitemap_enabled`<br>Enable/disable the generation of `/sitemap.xml`. | `true` | `Boolean`|
+|`scoold.access_log_enabled`<br>Enable/disable the Scoold access log. | `false` | `Boolean`|
+|`scoold.user_autocomplete_details_enabled`<kbd>Pro</kbd><br>Enable/disable extra details when displaying user results in autocomplete. | `false` | `Boolean`|
 
 </details>
 
@@ -2332,6 +2336,14 @@ For the latter option set:
 scoold.mention_emails_controlled_by_admins = true
 ```
 
+In certain cases, there may be lots of people with identical or similar names within a team which could make it difficult
+to tell them apart when trying to mention them. For such scenarios, there is an option to show additional details for
+each user, like username and tags. This is enabled like so:
+
+```ini
+scoold.user_autocomplete_details_enabled = true
+```
+
 ## Security headers
 
 Scoold attaches several security headers to each response. These can be enabled or disabled with the following configuration
@@ -2399,12 +2411,16 @@ scoold.navbar_link1_url = ""
 scoold.navbar_link2_url = ""
 scoold.navbar_link1_text = "Link1"
 scoold.navbar_link2_text = "Link2"
+scoold.navbar_link1_target = "_self"
+scoold.navbar_link2_target = "_self"
 
 # custom navbar menu links (shown to logged in users)
 scoold.navbar_menu_link1_url = ""
 scoold.navbar_menu_link2_url = ""
 scoold.navbar_menu_link1_text = "Menu Link1"
 scoold.navbar_menu_link2_text = "Menu Link2"
+scoold.navbar_menu_link1_target = "_self"
+scoold.navbar_menu_link2_target = "_self"
 
 # default email notification toggles for all users
 scoold.favtags_emails_enabled = false

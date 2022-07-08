@@ -23,6 +23,7 @@ import com.erudika.para.core.ParaObject;
 import com.erudika.para.core.Sysprop;
 import com.erudika.para.core.Tag;
 import com.erudika.para.core.User;
+import com.erudika.para.core.Votable;
 import com.erudika.para.core.Vote;
 import com.erudika.para.core.Webhook;
 import com.erudika.para.core.email.Emailer;
@@ -900,6 +901,22 @@ public final class ScooldUtils {
 		return CONF.navbarCustomMenuLink2Text();
 	}
 
+	public String getNavbarLink1Target() {
+		return CONF.navbarCustomLink1Target();
+	}
+
+	public String getNavbarLink2Target() {
+		return CONF.navbarCustomLink2Target();
+	}
+
+	public String getNavbarMenuLink1Target() {
+		return CONF.navbarCustomMenuLink1Target();
+	}
+
+	public String getNavbarMenuLink2Target() {
+		return CONF.navbarCustomMenuLink2Target();
+	}
+
 	public boolean alwaysHideCommentForms() {
 		return CONF.alwaysHideCommentForms();
 	}
@@ -972,7 +989,7 @@ public final class ScooldUtils {
 		return StringUtils.equalsAnyIgnoreCase(langCode, "ar", "he", "dv", "iw", "fa", "ps", "sd", "ug", "ur", "yi");
 	}
 
-	public void fetchProfiles(List<? extends ParaObject> objects) {
+	public void getProfiles(List<? extends ParaObject> objects) {
 		if (objects == null || objects.isEmpty()) {
 			return;
 		}
@@ -1047,6 +1064,25 @@ public final class ScooldUtils {
 		}
 		if (!forUpdate.isEmpty()) {
 			pc.updateAll(allPosts);
+		}
+	}
+
+	public void getVotes(List<Post> allPosts, Profile authUser) {
+		if (authUser == null) {
+			return;
+		}
+		Map<String, Vote> allVotes = new HashMap<>();
+		List<String> allVoteIds = new ArrayList<String>();
+		for (Post post : allPosts) {
+			allVoteIds.add(new Vote(authUser.getId(), post.getId(), Votable.VoteValue.UP).getId());
+		}
+		if (!allVoteIds.isEmpty()) {
+			for (ParaObject vote : pc.readAll(allVoteIds)) {
+				allVotes.put(((Vote) vote).getParentid(), (Vote) vote);
+			}
+		}
+		for (Post post : allPosts) {
+			post.setVote(allVotes.get(post.getId()));
 		}
 	}
 
@@ -1349,8 +1385,8 @@ public final class ScooldUtils {
 		if (!StringUtils.isBlank(qs)) {
 			String wildcardLower = qs.matches("[\\p{IsAlphabetic}]*") ? qs + "*" : qs;
 			String wildcardUpper = StringUtils.capitalize(wildcardLower);
-			String template = "(name:({1}) OR name:({2} OR {3}) OR properties.location:({0}) OR "
-					+ "properties.aboutme:({0}) OR properties.groups:({0}))";
+			String template = "(name:({1}) OR name:({2} OR properties.originalName:{1} OR properties.originalName:{2} OR {3}) "
+					+ "OR properties.location:({0}) OR properties.aboutme:({0}) OR properties.groups:({0}))";
 			qs = (StringUtils.isBlank(spaceFilter) ? "" : spaceFilter + " AND ") +
 					Utils.formatMessage(template, qs, StringUtils.capitalize(qs), wildcardLower, wildcardUpper);
 		} else {

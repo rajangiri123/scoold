@@ -322,18 +322,21 @@ $(function () {
 		var dis = $(this);
 		var up = dis.hasClass("upvote");
 		var votes = dis.closest("div.votebox").find(".votecount").filter(':visible');
-		var newvotes = parseInt(votes.text(), 10) || 0;
 		if (!dis.data("disabled")) {
+			var selectedVote = dis.closest(".votebox").find(".cast").removeClass("cast");
+			if (!selectedVote.length) {
+				dis.find(".downvote,.upvote").addClass("cast");
+			}
 			dis.data("disabled", true);
 			$.post(this.href, function(data) {
 				if (data === true) {
+					var newvotes = parseInt(votes.text(), 10) || 0;
 					if (up) {
-						newvotes++;
+						votes.text(++newvotes).removeClass("hide");
 					} else {
-						newvotes--;
+						votes.text(--newvotes).removeClass("hide");
 					}
 				}
-				votes.text(newvotes).removeClass("hide");
 				dis.removeData("disabled");
 			}, "json");
 		}
@@ -376,6 +379,7 @@ $(function () {
 
 	$(document).on("click", ".toggle-drawer",  function() {
 		$('#search-drawer').toggleClass('hide');
+		$('#search-info-drawer').addClass('hide');
 		$('#search-box').focus();
 		return false;
 	});
@@ -671,6 +675,53 @@ $(function () {
 		});
 	}
 
+	var badgePreview = $("#badge-preview");
+	var badgeName = $("#badge-preview-tag");
+	var badgeIcon = $("#badge-preview-icon");
+
+	$("#badge-tag").on("keyup", function () {
+		badgeName.text($(this).val());
+	});
+	$("#badge-description").on("keyup", function () {
+		badgePreview.attr("title", $(this).val());
+	});
+	$("#badge-icon").on("change", function () {
+		badgeIcon.removeClass("hide").text($(this).val());
+	});
+	$("#badge-color").on("change", function () {
+		badgeName.css("color", $(this).val());
+	});
+	$("#badge-background").on("change", function () {
+		badgePreview.css("background-color", $(this).val());
+	});
+
+	$(document).on("mouseenter", ".custom-badge", function () {
+		var dis = $(this);
+		if (dis.hasClass("add")) {
+			dis.find(".fa-plus, a").removeClass("hide");
+		} else if ($(this).hasClass("remove")) {
+			dis.find(".fa-minus").removeClass("hide");
+		}
+	});
+	$(document).on("mouseleave", ".custom-badge", function () {
+		var dis = $(this);
+		if (dis.hasClass("add")) {
+			dis.find(".fa-plus").addClass("hide");
+		} else if ($(this).hasClass("remove")) {
+			dis.find(".fa-minus, a").addClass("hide");
+		}
+	});
+
+	$(document).on("click", ".custom-badge.add", function () {
+		$.post($(this).hide().children("i").addClass("hide").end().
+				removeClass("add").addClass("remove").show().appendTo("#user-badges").attr("data-url"));
+	});
+
+	$(document).on("click", ".custom-badge.remove", function () {
+		$.post($(this).hide().children("i").addClass("hide").end().
+				removeClass("remove").addClass("add").show().appendTo("#available-badges").attr("data-url"));
+	});
+
 	/****************************************************
      *                      SETTINGS
      ****************************************************/
@@ -833,7 +884,8 @@ $(function () {
 
 	function replaceMentionsWithHtmlLinks(text) {
 		return text.replace(/@(&lt;|<)(.+?)\|(.*?)(&gt;|>)/igm, function (m, group1, group2, group3) {
-			return "<a href=\"" + hostURL + "/profile/" + group2 + "\">" + (group3 || "NoName") + "</a>";
+			return "<a href=\"" + hostURL + "/profile/" + encodeURIComponent(group2) + "\">" +
+					(new Option(group3 || "NoName").innerHTML) + "</a>";
 		});
 	}
 
@@ -854,12 +906,32 @@ $(function () {
 		updateMentionsWithLinks();
 	});
 
+	$(".emoji-picker-container").on("emoji:select", function(e, data) {
+		var textbox = $(this).find("textarea");
+		if (textbox.data("codemirror")) {
+			var cm = textbox.data("codemirror");
+			cm.setValue(cm.getValue() + data.emoji);
+		} else {
+			var target = $(this).find(".emoji-picker-target");
+			target.text((target.hasClass("single") ? "" : target.text()) + data.emoji);
+			target.val((target.hasClass("single") ? "" : target.val()) + data.emoji);
+			target.trigger("change");
+		}
+	});
+
 	function initPostEditor(elem) {
 		var mde = new EasyMDE({
 			element: elem,
 			autoDownloadFontAwesome: false,
 			showIcons: ["code", "table", "strikethrough"],
 			spellChecker: false,
+			promptURLs: true,
+			toolbar: ["bold", "italic", "strikethrough", "heading", "|",
+				"code", "quote", "unordered-list", "ordered-list", "|", "link", "image", "table", {
+				name: "attach-emoji",
+				className: "fa fa-smile-o emoji-button empty",
+				title: "Insert emoji"
+			},  "|", "preview", "side-by-side", "fullscreen", "|", "guide"],
 			previewRender: function (plainText) {
 				return this.parent.markdown(replaceMentionsWithMarkdownLinks(plainText));
 			},
@@ -881,6 +953,8 @@ $(function () {
 			mde.codemirror.options.direction = "rtl";
 			//mde.codemirror.options.rtlMoveVisually = false;
 		}
+
+		$(elem).data("codemirror", mde.codemirror);
 		return mde;
 	}
 
@@ -1118,6 +1192,12 @@ $(function () {
 			localStorage.removeItem("questionFilterOpen");
 			$(this).removeClass("grey darken-2 white-text").blur().children("i").removeClass("fa-times").addClass("fa-filter");
 		} else {
+			var checked = $(".compact-view-checkbox").parent("label").attr("data-compactViewEnabled");
+			if (checked === "true") {
+				$(".compact-view-checkbox").prop("checked", true);
+			} else {
+				$(".compact-view-checkbox").prop("checked", false);
+			}
 			localStorage.setItem("questionFilterOpen", true);
 			$(this).addClass("grey darken-2 white-text").children("i").removeClass("fa-filter").addClass("fa-times");
 		}

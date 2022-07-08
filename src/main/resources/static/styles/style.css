@@ -286,8 +286,8 @@ i.close:before {
 	content: "\f00d";
 }
 .upvote, .downvote {color: #888888;}
-.upvote:hover {color: #4CAF50;}
-.downvote:hover {color: #F44336;}
+.upvote:hover, .upvote.cast {color: #4CAF50;}
+.downvote:hover, .downvote.cast {color: #F44336;}
 
 blockquote { border-left: 5px solid #888888; }
 .editor-preview ul>li {
@@ -343,6 +343,7 @@ img.profile-pic:before {
 	background-attachment: initial;
 	background-position: center;
 	background-size: cover;
+	color: transparent;
 }
 .personbox img.profile-pic:before {
   height: 89%;
@@ -516,14 +517,27 @@ h5 {
 	border-radius: 3px;
 }
 
-small.badgebox {
+small.badgebox, .custom-badge.small {
 	line-height: inherit;
-	height: 1.6em;
+	height: 1.5em;
 	padding: 0px 5px;
+	margin: 0;
+}
+
+.custom-badge.small {
+	padding: 0px 8px;
 }
 
 .userbox small.badgebox {
 	font-size: 10px;
+}
+
+.custom-badge.add:hover, .custom-badge.remove:hover {
+	cursor: pointer;
+}
+
+#badge-preview-icon {
+	color: black;
 }
 
 .smallspacebox {
@@ -542,6 +556,30 @@ small.badgebox {
 
 table.striped>tbody>tr:nth-child(odd) {
     background-color: rgba(242,242,242,0.5);
+}
+
+.emoji-picker-container input, .emoji-picker-container input:focus {
+	border-bottom: none !important;
+	box-shadow: none !important;
+}
+.emoji-picker-container header {
+	padding-top: 0;
+	margin: 0 !important;
+}
+.emoji-picker-container header svg {
+	margin-top: 10px;
+}
+.emoji-picker-container [class*="popupPicker"] {
+	z-index: 10;
+}
+
+.lang-button {
+	height: 5em;
+	width: 100%;
+}
+
+.lang-button:hover {
+	border: 1px solid #88AF12;
 }
 
 @media (max-width: 1400px) {

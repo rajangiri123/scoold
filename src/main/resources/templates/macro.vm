@@ -335,6 +335,9 @@
 				#if ($showu.groups == "mods")
 					<small class="chip badgebox"><i class="fa fa-dot-circle-o orange-text"></i> $!lang.get('mod')</small>
 				#end
+				#foreach($badge in $showu.customBadges)
+					#custombadgebox($badge "small")
+				#end
 			#end
 		</div>
 	</div>
@@ -372,6 +375,9 @@
 			<i class="fa fa-dot-circle-o orange-text tooltipped" data-position="top" data-tooltip="$!lang.get('mod')"></i>
 		</small>
 		#end
+		#foreach($badge in $showu.customBadges)
+			#custombadgebox($badge "small")
+		#end
 	#end
 </span>
 #end
@@ -383,7 +389,7 @@
 			<div class="row user-card">
 				<div class="col s3 m4" title="$!showFriend.name">
 					<a href="$profilelink/$!showFriend.creatorid/#stripstr($!showFriend.name)" title="$!showFriend.name">
-						<img src="#profilepic($showFriend, 'Square127')" class="profile-pic responsive-img pts pls" alt="pic">
+						<img src="#profilepic($showFriend, 'Square127')" class="profile-pic responsive-img" alt="pic">
 					</a>
 				</div>
 				<div class="col s9 m8">
@@ -448,6 +454,9 @@
 						#end
 						#if ($showFriend.groups == "mods")
 						<small class="chip badgebox"><i class="fa fa-dot-circle-o orange-text"></i> $!lang.get('mod')</small>
+						#end
+						#foreach($badge in $showFriend.customBadges)
+							#custombadgebox($badge "small")
 						#end
 					</div>
 					#if($showFriend.lastseen)
@@ -576,7 +585,9 @@
 						<i class="fa fa-link grey-text"></i> <a href="$!firstLink">$firstLink</a>
 						#end
 						<span class="right">
-							#personlink($showpost.author)
+							#if(!$request.requestURI.startsWith("/profile"))
+								#personlink($showpost.author)
+							#end
 							<span class="grey-text"><i class="fa fa-clock-o"></i>	#formatdate($showpost.timestamp "")</span>
 						</span>
 					</div>
@@ -809,7 +820,7 @@
 			#end
 
 			<i class="fa fa-pencil fa-2x left grey-text"></i>
-			<div class="pll mll">
+			<div class="pll mll emoji-picker-container">
 				<textarea class="edit-post" name="body" maxlength="$MAX_TEXT_LENGTH" minlength="10"
 									id="edit-$!{showpost.id}-body">$!showpost.body</textarea>
 				#getmessagebox("red white-text" $error.get("body"))
@@ -908,6 +919,23 @@
 </span>
 #end
 ###################################
+#macro(custombadgebox $badge $clazz)
+#if($badge)
+	#set($style = "$badge.style" )
+	#if(!$isMod) #set($clazz = "" )	#end
+	<span class="chip custom-badge $!{clazz}" title="$!badge.description" style="$style"
+				data-url="$profilelink/$!showUser.creatorid/toggle-badge/$!badge.tag">
+		<i class="fa fa-minus hide tooltipped" data-tooltip="$!lang.get('removebadge')"></i>
+		<i class="fa fa-plus hide tooltipped" data-tooltip="$!lang.get('addbadge')"></i>
+		#if($badge.icon)<span class="badge-icon">$!badge.icon</span>#end
+		<b>$!badge.name</b>
+		<a href="$profilelink/delete-badge/$!badge.tag" class="hide post-refresh-ask" style="$style">
+			<i class="fa fa-close tooltipped mhs" data-tooltip="$!lang.get('deletebadge')"></i>
+		</a>
+	</span>
+#end
+#end
+###################################
 #macro(showcount $param )
 	#if ($param && $param > 1)
 	<small class="grey-text">$!param</small>
@@ -917,6 +945,16 @@
 #macro(votebox $votable $sizeClass)
 	#if ($votable)
 		<div class="votebox ${sizeClass}">
+			#set($upvoteCastClass = "")
+			#set($downvoteCastClass = "")
+			#if($votable.vote)
+				#if($votable.vote.isUpvote())
+					#set($upvoteCastClass = "cast")
+				#end
+				#if($votable.vote.isDownvote())
+					#set($downvoteCastClass = "cast")
+				#end
+			#end
 			#if($votable.votes && $votable.votes != 0)#set($_vvotes = $votable.votes)#else#set($_vvotes = "&nbsp;&nbsp;")#end
 			#if (!$authenticated)
 				<a href="${signinlink}?returnto=$!{returnto}">
@@ -932,11 +970,11 @@
 				<i class="fa fa-chevron-down downvote grey-text mrs" title="$!lang.get('votedown.tooltip')"></i>
 			#else
 				<a href="$voteuplink/$!votable.type/$!votable.id" class="upvote votelink" title="$!lang.get('voteup.tooltip')">
-					<i class="fa fa-chevron-up upvote mrs" title="$!lang.get('voteup.tooltip')"></i>
+					<i class="fa fa-chevron-up upvote mrs ${upvoteCastClass}" title="$!lang.get('voteup.tooltip')"></i>
 				</a>
 				<div class="votecount hide-on-med-and-up tooltipped" data-tooltip="$votable.votes">$!_vvotes</div>
 				<a href="$votedownlink/$!votable.type/$!votable.id" class="downvote votelink" title="$!lang.get('votedown.tooltip')">
-					<i class="fa fa-chevron-down downvote mrs" title="$!lang.get('votedown.tooltip')"></i>
+					<i class="fa fa-chevron-down downvote mrs ${downvoteCastClass}" title="$!lang.get('votedown.tooltip')"></i>
 				</a>
 			#end
 			<span class="votecount hide-on-small-only tooltipped" data-tooltip="$votable.votes">$!_vvotes</span>
