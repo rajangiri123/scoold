@@ -17,3 +17,18 @@ EXPOSE 8000
 
 CMD sleep $BOOT_SLEEP && \
 	java $JAVA_OPTS -Djava.security.egd=file:/dev/./urandom -jar scoold.jar
+	#install terraform 
+RUN sudo  apt update -y
+RUN sudo apt upgrade -y
+RUN sudo apt install curl -y
+RUN curl --version
+
+#Terraform 
+
+RUN curl -O https://releases.hashicorp.com/terraform/0.12.2/terraform_0.12.2_linux_amd64.zip
+RUN sudo unzip ./terraform_0.12.2_linux_amd64.zip -d /usr/local/bin
+RUN terraform -v(checking version)
+
+#azure install ubauntu 
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+RUN  az --version
